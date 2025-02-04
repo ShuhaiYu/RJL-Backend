@@ -57,4 +57,25 @@ module.exports = {
       next(err);
     }
   },
+
+  // 允许 agency 或 admin 访问
+  requireAgencyOrAdmin: async (req, res, next) => {
+    try {
+      // 确保已经调用 authenticateToken
+      if (!req.user || (req.user.role !== 'agency' && req.user.role !== 'admin')) {
+        return res.status(403).json({ message: '需要中介或管理员权限' });
+      }
+      // 对于 agency 角色，可以进一步检查权限（例如创建房产权限）
+      if (req.user.role === 'agency') {
+        const permissions = await getPermissionsByRole(req.user.role);
+        if (!permissions || !permissions.create_property) {
+          return res.status(403).json({ message: '中介权限不足' });
+        }
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  },
+  
 };

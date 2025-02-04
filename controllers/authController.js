@@ -217,8 +217,8 @@ module.exports = {
     try {
       const { email } = req.body;
       const user = await getUserByEmail(email);
-      console.log(email);
-      console.log(req);
+      // console.log(email);
+      // console.log(req);
       
       if (!user) {
         return res.status(404).json({ message: '用户不存在' });

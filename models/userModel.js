@@ -14,13 +14,13 @@ async function createUserTable() {
   await pool.query(queryText);
 }
 
-async function insertUser({ email, name, password, role }) {
+async function insertUser({ email, name, password, role, agency_id = null }) {
   const text = `
-    INSERT INTO "USER" (email, name, password, role)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO "USER" (email, name, password, role, agency_id)
+    VALUES ($1, $2, $3, $4, $5)
     RETURNING *;
   `;
-  const values = [email, name, password, role];
+  const values = [email, name, password, role, agency_id];
   const { rows } = await pool.query(text, values);
   return rows[0];
 }
@@ -52,6 +52,17 @@ const { rows } = await pool.query(text, [refreshToken]);
 return rows[0];
 }
 
+/**
+ * 新增：根据用户ID获取用户记录（包含 agency_id）
+ * @param {number} userId 
+ * @returns {Object} 用户记录
+ */
+async function getUserById(userId) {
+  const text = `SELECT * FROM "USER" WHERE id = $1;`;
+  const { rows } = await pool.query(text, [userId]);
+  return rows[0];
+}
+
 module.exports = {
   createUserTable,
   insertUser,
@@ -60,4 +71,5 @@ module.exports = {
   updateUserStatus,
   updateUserRefreshToken,
   getUserByRefreshToken,
+  getUserById,
 };
