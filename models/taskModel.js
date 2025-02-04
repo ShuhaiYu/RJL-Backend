@@ -22,39 +22,44 @@ async function createTask({ property_id, due_date = null, task_name, task_descri
 }
 
 /**
- * 查询指定任务详情
+ * 查询指定任务详情（同时返回所属房产信息）
  * @param {number} taskId
- * @returns {Object} 任务详情
+ * @returns {Object} 任务详情及所属房产信息
  */
 async function getTaskById(taskId) {
   const querySQL = `
-    SELECT * FROM "TASK" WHERE id = $1;
+    SELECT T.*, P.name as property_name, P.address as property_address, P.agency_id as property_agency_id
+    FROM "TASK" T
+    LEFT JOIN "PROPERTY" P ON T.property_id = P.id
+    WHERE T.id = $1;
   `;
   const { rows } = await pool.query(querySQL, [taskId]);
   return rows[0];
-}
+};
 
 /**
- * 查询所有任务（供 admin 使用）
- * @returns {Array} 任务数组
+ * 查询所有任务（供 admin 使用），同时返回房产信息
+ * @returns {Array} 任务数组，每条任务包含所属房产部分信息
  */
 async function getAllTasks() {
   const querySQL = `
-    SELECT * FROM "TASK" ORDER BY id DESC;
+    SELECT T.*, P.name as property_name, P.address as property_address, P.agency_id as property_agency_id
+    FROM "TASK" T
+    LEFT JOIN "PROPERTY" P ON T.property_id = P.id
+    ORDER BY T.id DESC;
   `;
   const { rows } = await pool.query(querySQL);
   return rows;
 }
 
 /**
- * 根据机构 ID 查询所有任务（供 agency 使用）
- * 通过关联 PROPERTY 表过滤出所属机构的任务
+ * 根据机构 ID 查询所有任务（供 agency 使用），返回任务记录同时附带房产信息
  * @param {number} agency_id 
  * @returns {Array} 任务数组
  */
 async function getAllTasksByAgency(agency_id) {
   const querySQL = `
-    SELECT T.*
+    SELECT T.*, P.name as property_name, P.address as property_address, P.agency_id as property_agency_id
     FROM "TASK" T
     JOIN "PROPERTY" P ON T.property_id = P.id
     WHERE P.agency_id = $1
