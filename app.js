@@ -21,17 +21,6 @@ app.use(cors({
   origin: '*'
 }));
 
-// 建表 & 插入测试数据
-(async () => {
-  try {
-    await createUserTable();
-    await createRolePermissionTable();
-    await createAgencyTable();
-  } catch (err) {
-    console.error('初始化数据库失败:', err);
-  }
-})();
-
 // 路由
 app.use('/auth', authRoutes);
 app.use('/admin', authMiddleware.authenticateToken, adminRoutes);

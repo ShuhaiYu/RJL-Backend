@@ -4,6 +4,7 @@ const {
   updateUserStatus,
   getUserByEmail,
 } = require('../models/userModel');
+const { updateAgencyActiveStatus, createAgency } = require('../models/agencyModel');
 
 // 假设可以查询所有中介的函数
 async function getAllAgencies() {
@@ -51,18 +52,17 @@ module.exports = {
   // 创建中介账号
   createAgency: async (req, res, next) => {
     try {
-      // 假设前端传来的信息
-      const { email, name, password } = req.body;
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const newAgency = await insertUser({
-        email,
-        name,
-        password: hashedPassword,
-        role: 'agency',
-      });
-      res.status(201).json({ message: '中介账号创建成功', data: newAgency });
-    } catch (err) {
-      next(err);
+      // 从请求体中获取参数
+      const { agency_name, email, password, address, phone, logo } = req.body;
+      
+      // 调用模型层方法创建 agency
+      const newAgency = await createAgency({ agency_name, email, password, address, phone, logo });
+      
+      // 返回创建成功后的数据
+      res.status(201).json(newAgency);
+    } catch (error) {
+      // 错误统一传给错误处理中间件
+      next(error);
     }
   },
 
@@ -71,7 +71,7 @@ module.exports = {
     try {
       const agencyId = req.params.id;
       // 将is_actived置为false
-      await updateUserStatus(agencyId, false);
+      await updateAgencyActiveStatus(agencyId, false);
       res.status(200).json({ message: '中介账号已关闭/冻结' });
     } catch (err) {
       next(err);
@@ -83,7 +83,7 @@ module.exports = {
     try {
       const agencyId = req.params.id;
       // 将is_actived置为true
-      await updateUserStatus(agencyId, true);
+      await updateAgencyActiveStatus(agencyId, true);
       res.status(200).json({ message: '中介账号已解冻' });
     } catch (err) {
       next(err);

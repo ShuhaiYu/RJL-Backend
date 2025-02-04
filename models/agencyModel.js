@@ -1,44 +1,61 @@
 // models/agencyModel.js
 const pool = require('../config/db');
 
-// 建表
-async function createAgencyTable() {
-  const createTableSQL = `
-    CREATE TABLE IF NOT EXISTS "AGENCY" (
-      id SERIAL PRIMARY KEY,
-      user_id INT NOT NULL,
-      agency_name VARCHAR(255) NOT NULL,
-      address TEXT,
-      phone VARCHAR(50),
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    );
-  `;
-  await pool.query(createTableSQL);
-}
-
-// 插入一些初始数据
-async function insertDummyAgencies() {
-  // 这里随便示例一下
-  const dummySQL = `
-    INSERT INTO "AGENCY" (user_id, agency_name, address, phone)
-    VALUES
-      (2, 'Sunshine Agency', '123 Sunshine Road', '400-888-999'),
-      (3, 'Moonlight Agency', '78 Moon Street', '400-555-666')
-    RETURNING *;
-  `;
-  // 说明：user_id=2/3 表示在 USER 表里要对应的中介用户
-  // 你可根据真实 user_id 来调整
+// create agency
+async function createAgency({ agency_name, email, password, address = null, phone = null, logo = null }) {
   try {
-    const { rows } = await pool.query(dummySQL);
-    console.log('Dummy AGENCY data inserted:', rows);
-  } catch (err) {
-    // 如果重复插入会报错，你可根据需求处理
-    console.error('Insert dummy data failed:', err.message);
+    // 开启事务
+    await pool.query('BEGIN');
+
+    // 对密码进行加密（注册用户时保证密码隐藏）
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 1. 在 USER 表中插入一条记录
+    // 这里使用 insertUser，但注意 insertUser 不做加密，因此需要传入加密后的密码，
+    // 并强制 role 为 'agency'，同时将 agency_name 作为用户姓名
+    const newUser = await insertUser({
+      email,
+      name: agency_name,
+      password: hashedPassword,
+      role: 'agency',
+    });
+    const userId = newUser.id;
+
+    // 2. 在 AGENCY 表中插入记录，并关联刚刚创建的 user_id
+    const insertAgencySQL = `
+      INSERT INTO "AGENCY" (user_id, agency_name, address, phone, logo)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *;
+    `;
+    const { rows: agencyRows } = await pool.query(insertAgencySQL, [
+      userId,
+      agency_name,
+      address,
+      phone,
+      logo,
+    ]);
+
+    // 提交事务
+    await pool.query('COMMIT');
+    return agencyRows[0];
+  } catch (error) {
+    // 回滚事务
+    await pool.query('ROLLBACK');
+    throw error;
   }
 }
 
+
+async function updateAgencyActiveStatus(agencyId, isActive) {
+  const updateSQL = `
+    UPDATE "AGENCY"
+    SET is_actived = $1
+    WHERE id = $2;
+  `;
+  await pool.query(updateSQL, [isActive, agencyId]);
+}
+
 module.exports = {
-  createAgencyTable,
-  insertDummyAgencies,
+  createAgency,
+  updateAgencyActiveStatus,
 };
