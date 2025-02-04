@@ -2,7 +2,7 @@
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { getUserByEmail, updateUserPassword, updateUserRefreshToken, getUserByRefreshToken, insertUser } = require('../models/userModel');
+const { getUserByEmail, getUserById, updateUserPassword, updateUserRefreshToken, getUserByRefreshToken, insertUser } = require('../models/userModel');
 
 let loginAttemptsMap = {}; // 锁定逻辑用内存计数示例
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'fallback_access_secret';
@@ -214,20 +214,27 @@ module.exports = {
   },
 
   getCurrentUser: async (req, res, next) => {
-    try {
-      const { email } = req.body;
-      const user = await getUserByEmail(email);
-      // console.log(email);
-      // console.log(req);
+    try {      
+      // 直接从 req.user 中拿到 userId 与 role
+      const user = await getUserByEmail(req.body.email);
+      console.log('user:', user);
       
       if (!user) {
         return res.status(404).json({ message: '用户不存在' });
       }
-      return res.status(200).json({
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      });
+      // 如果当前用户是 agency，则通过 agencyModel 获取机构数据
+      if (user.role === 'agency') {
+        // 调用 agencyModel 中的 getAgencyByUserId 方法
+        const { getAgencyByAgencyId } = require('../models/agencyModel');
+        const agencyInfo = await getAgencyByAgencyId(user.agency_id);
+        return res.status(200).json({
+          ...user,
+          agencyInfo, // 这里包含机构的详细信息
+        });
+      } else {
+        // 如果是 admin 或其他角色，直接返回用户信息
+        return res.status(200).json(user);
+      }
     } catch (err) {
       next(err);
     }

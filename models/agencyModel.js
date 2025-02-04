@@ -54,8 +54,8 @@ async function createAgency({ agency_name, email, password, address = null, phon
  * @param {number} user_id 
  * @returns {Object} 机构记录，如果不存在则返回 undefined
  */
-async function getAgencyByUserId(user_id) {
-  const querySQL = `SELECT * FROM "AGENCY" WHERE user_id = $1;`;
+async function getAgencyByAgencyId(user_id) {
+  const querySQL = `SELECT * FROM "AGENCY" WHERE id = $1;`;
   const { rows } = await pool.query(querySQL, [user_id]);
   return rows[0];
 }
@@ -73,5 +73,5 @@ async function updateAgencyActiveStatus(agencyId, isActive) {
 module.exports = {
   createAgency,
   updateAgencyActiveStatus,
-  getAgencyByUserId,
+  getAgencyByAgencyId,
 };
