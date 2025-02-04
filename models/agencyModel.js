@@ -1,5 +1,7 @@
 // models/agencyModel.js
 const pool = require('../config/db');
+const bcrypt = require('bcrypt');
+const { insertUser } = require('./userModel');
 
 // create agency
 async function createAgency({ agency_name, email, password, address = null, phone = null, logo = null }) {
