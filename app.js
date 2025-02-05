@@ -32,6 +32,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: '服务器错误', error: err.message });
 });
 
+require('./emailListener'); // 启动邮件监听
+
 // 启动服务
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
