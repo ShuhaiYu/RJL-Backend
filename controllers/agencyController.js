@@ -4,7 +4,8 @@ const {
   createProperty, 
   getPropertyById, 
   getAllProperties, 
-  getAllPropertiesByAgency 
+  getAllPropertiesByAgency,
+  getPropertyByAddress 
 } = require('../models/propertyModel');
 const { 
   createTask, 
@@ -158,6 +159,62 @@ module.exports = {
       res.status(201).json({
         message: '任务创建成功',
         data: newTask,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
+   * 根据邮件正文，自动识别其中的地址，并在数据库中创建房产记录（如果已存在则跳过）。
+   * POST /agency/create-property-by-email
+   * @param {string} req.body.emailBody - 完整的邮件正文
+   */
+  createPropertyByEmail: async (req, res, next) => {
+    try {
+      const { emailBody } = req.body;
+      if (!emailBody) {
+        return res
+          .status(400)
+          .json({ message: 'emailBody is required' });
+      }
+
+      // 1) 定义一个用来匹配澳洲常见地址形式的正则
+      //    示例：匹配类似 "1502E/18 Hoff Boulevard, Southbank, VIC 3006"、"136 Church Rd, Doncaster VIC, Australia"、"1208/81 A'Beckett Street, Melbourne VIC 3000, Australia"
+      const addressRegex =
+        /(\d+[^\n,]*)\s*,\s*([A-Za-z\'’\s]+),\s*(VIC|NSW|QLD|ACT|TAS|NT|WA)(\s*\d{3,4})?(,\s*Australia)?/gi;
+
+      // 2) 匹配所有地址
+      const matches = emailBody.match(addressRegex) || [];
+      console.log('matches:', matches);
+
+      // 3) 去重（如果邮件里多次出现相同地址）
+      const uniqueAddresses = [...new Set(matches)];
+      console.log('uniqueAddresses:', uniqueAddresses);
+
+      // 4) 依次检查并创建
+      const createdList = [];
+      for (const address of uniqueAddresses) {
+        // 4.1 判断数据库里是否已存在
+        const existing = await getPropertyByAddress(address);
+        console.log('existing:', existing);
+        if (!existing || existing.length === 0) {
+          // 如果不存在就创建
+          const newProperty = await createProperty({
+            name: 'Test Property', // 写死的 name 之后修改
+            address,
+            agency_id: 8, // 写死的 agency_id， 之后修改
+          });
+          createdList.push(newProperty);
+          console.log('newProperty:', newProperty);
+          
+        }
+      }
+
+      return res.status(201).json({
+        message: '邮件中的房产地址已处理完毕',
+        newCreatedCount: createdList.length,
+        data: createdList,
       });
     } catch (err) {
       next(err);

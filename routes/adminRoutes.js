@@ -3,6 +3,9 @@ const router = express.Router();
 const adminController = require('../controllers/adminController');
 const authMiddleware = require('../middlewares/authMiddleware');
 
+// 使用 authenticateToken 对所有接口进行 token 校验
+router.use(authMiddleware.authenticateToken);
+
 // 管理员专属路由示例（需要先通过 authMiddleware 判断是否是admin角色）
 router.get('/agencies', authMiddleware.requireAdmin, adminController.getAgencies);
 router.get('/agencies/:id', authMiddleware.requireAdmin, adminController.getAgencyDetail);

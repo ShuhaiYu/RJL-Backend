@@ -1,0 +1,47 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ "main" ]
+  # 也可以 on: [workflow_dispatch] 做手动触发
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build (if needed)
+        run: npm run build
+
+      # 如果你不需要 build，可以略过以上步骤
+
+      - name: Add SSH key
+        # 这里将 base64 编码过的私钥写到一个文件
+        # 如果你没 base64 编码，也可以直接用 secrets.EC2_KEY，但要注意换行符
+        run: |
+          echo "$EC2_KEY" | base64 -d > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+        env:
+          EC2_KEY: ${{ secrets.EC2_KEY }}
+
+      - name: Deploy to EC2
+        run: |
+          # SSH 到 EC2，执行部署命令
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            cd /home/ec2-user/myapp   # 进入你项目所在目录
+            git pull origin main      # 拉取最新代码 (如果你直接在服务器上git clone)
+            npm install --production  # 安装依赖
+            pm2 reload index.js       # 重启服务 (或 pm2 restart <process_name>)
+            exit
+          EOF

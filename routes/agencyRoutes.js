@@ -4,6 +4,9 @@ const router = express.Router();
 const agencyController = require('../controllers/agencyController');
 const { authenticateToken, requireAgencyOrAdmin } = require('../middlewares/authMiddleware');
 
+// 不需要token验证的接口
+router.post('/create-property-by-email', agencyController.createPropertyByEmail);
+
 // 使用 authenticateToken 对所有接口进行 token 校验
 router.use(authenticateToken);
 

@@ -23,8 +23,8 @@ app.use(cors({
 
 // 路由
 app.use('/auth', authRoutes);
-app.use('/admin', authMiddleware.authenticateToken, adminRoutes);
-app.use('/agency', authMiddleware.authenticateToken, agencyRoutes);
+app.use('/admin', adminRoutes);
+app.use('/agency', agencyRoutes);
 
 // 错误处理
 app.use((err, req, res, next) => {

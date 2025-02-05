@@ -1,5 +1,5 @@
 // models/propertyModel.js
-const pool = require('../config/db');
+const pool = require("../config/db");
 
 /**
  * 创建房产（Property）
@@ -47,7 +47,7 @@ async function getAllProperties() {
 
 /**
  * 根据机构 ID 查询房产（供 agency 使用）
- * @param {number} agency_id 
+ * @param {number} agency_id
  * @returns {Array} 房产数组
  */
 async function getAllPropertiesByAgency(agency_id) {
@@ -60,9 +60,20 @@ async function getAllPropertiesByAgency(agency_id) {
   return rows;
 }
 
+async function getPropertyByAddress(address) {
+  const querySQL = `
+    SELECT * FROM "PROPERTY" 
+    WHERE address = $1
+    ORDER BY id DESC;
+  `;
+  const { rows } = await pool.query(querySQL, [address]);
+  return rows;
+}
+
 module.exports = {
   createProperty,
   getPropertyById,
   getAllProperties,
   getAllPropertiesByAgency,
+  getPropertyByAddress,
 };

@@ -1,5 +1,6 @@
 // controllers/authController.js
 require('dotenv').config();
+const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { getUserByEmail, getUserById, updateUserPassword, updateUserRefreshToken, getUserByRefreshToken, insertUser } = require('../models/userModel');
@@ -152,38 +153,114 @@ module.exports = {
     }
   },
 
-  // 3) 找回密码 (与之前类似)
+  /**
+   * POST /auth/forgot-password
+   * @param {string} req.body.email - 用户的邮箱
+   */
   forgotPassword: async (req, res, next) => {
     try {
       const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+      }
+
+      // 1. 查找用户
       const user = await getUserByEmail(email);
       if (!user) {
         return res.status(404).json({ message: '用户不存在' });
       }
 
-      // 示例: 生成一个临时token(用于重置密码)
-      const resetToken = jwt.sign({ userId: user.id }, ACCESS_SECRET, { expiresIn: '15m' });
-      // 需要发邮件给用户，演示仅返回
-      return res.status(200).json({ message: '已发送重置链接', resetToken });
+      // 2. 生成 15 分钟有效期的token
+      //    注意：这里直接把 userId、email 放进 token
+      const resetToken = jwt.sign(
+        { userId: user.id, email: email },
+        ACCESS_SECRET,
+        { expiresIn: '15m' }
+      );
+
+      // 3. 发送邮件
+      const transporter = nodemailer.createTransport({
+        service: 'Gmail',
+        auth: {
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_PASSWORD,
+        },
+      });
+
+      // 前端的重置链接（示例: localhost:3000）
+      // 注意加上 email & token，这样前端能获取并发送到后端
+      const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password/change?token=${resetToken}&email=${encodeURIComponent(
+        email
+      )}`;
+
+      const mailOptions = {
+        from: process.env.GMAIL_USER,
+        to: email,
+        subject: 'Reset Your Password',
+        html: `
+          <p>您好，</p>
+          <p>您收到这封邮件是因为您请求了找回密码。请点击以下链接以重置密码（15 分钟内有效）：</p>
+          <p><a href="${resetUrl}" target="_blank">${resetUrl}</a></p>
+          <p>如果您没有请求此操作，请忽略此邮件。</p>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+
+      // 4. 返回前端
+      return res
+        .status(200)
+        .json({ message: '已发送重置链接到邮箱', resetToken });
     } catch (err) {
       next(err);
     }
   },
 
-  // 4) 重置密码 (与之前类似)
+  /**
+   * POST /auth/reset-password
+   * @param {string} req.body.email - 用户邮箱
+   * @param {string} req.body.token - 重置token
+   * @param {string} req.body.password - 新密码
+   * @param {string} req.body.password_confirmation - 确认密码
+   */
   resetPassword: async (req, res, next) => {
     try {
-      const { resetToken, newPassword } = req.body;
-      let payload;
-      try {
-        payload = jwt.verify(resetToken, ACCESS_SECRET);
-      } catch (error) {
-        return res.status(400).json({ message: '无效或过期的重置链接' });
+      const { email, token, password, password_confirmation } = req.body;
+      if (!email || !token || !password || !password_confirmation) {
+        return res
+          .status(400)
+          .json({ message: 'email, token, password, password_confirmation are required' });
+      }
+      if (password !== password_confirmation) {
+        return res.status(400).json({ message: '两次密码不一致' });
       }
 
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
-      await updateUserPassword(payload.userId, hashedPassword);
+      // 1. 验证 token 是否有效
+      let decoded;
+      try {
+        decoded = jwt.verify(token, ACCESS_SECRET);
+      } catch (error) {
+        return res.status(401).json({ message: 'Token 已失效或不合法' });
+      }
 
+      // 2. 校验 token 中的 email / userId 与请求 body 中的一致
+      if (decoded.email !== email) {
+        return res.status(401).json({ message: 'Token 与当前用户不匹配' });
+      }
+
+      // 3. 找到用户
+      const user = await getUserByEmail(email);
+      if (!user) {
+        return res.status(404).json({ message: '用户不存在' });
+      }
+
+      // 加密密码
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // 4. 更新密码 (hash)
+      await updateUserPassword(user.id, hashedPassword);
+
+      // 5. 返回成功
       return res.status(200).json({ message: '密码重置成功' });
     } catch (err) {
       next(err);
