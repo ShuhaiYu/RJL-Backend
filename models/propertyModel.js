@@ -120,11 +120,23 @@ async function deleteProperty(propertyId) {
   await pool.query(deleteSQL, [propertyId]);
 }
 
+async function updateProperty(propertyId, { name, address }) {
+  const updateSQL = `
+    UPDATE "PROPERTY"
+    SET name = $1, address = $2
+    WHERE id = $3
+    RETURNING *;
+  `;
+  const { rows } = await pool.query(updateSQL, [name, address, propertyId]);
+  return rows[0];
+}
+
 module.exports = {
   createProperty,
   getPropertyById,
   getAllProperties,
   getAllPropertiesByAgency,
   getPropertyByAddress,
-  deleteProperty
+  deleteProperty,
+  updateProperty,
 };

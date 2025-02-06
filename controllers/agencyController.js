@@ -1,6 +1,6 @@
 // controllers/agencyController.js
 const { createAgency } = require('../models/agencyModel');
-const { getAllProperties, getAllPropertiesByAgency, getPropertyById, createProperty, getPropertyByAddress, deleteProperty } = require('../models/propertyModel');
+const { getAllProperties, getAllPropertiesByAgency, getPropertyById, createProperty, getPropertyByAddress, deleteProperty, updateProperty } = require('../models/propertyModel');
 const { getAllTasks, getAllTasksByAgency, getTaskById, createTask, deleteTask, updateTask } = require('../models/taskModel');
 const { getUserById } = require('../models/userModel');
 const { createContact, getAllContacts, getContactById, updateContactDetail } = require('../models/contactModel');
@@ -298,7 +298,7 @@ module.exports = {
           return res.status(403).json({ message: '无权访问该房产' });
         }
       }
-      const updatedProperty = await createProperty({ id: propertyId, name, address });
+      const updatedProperty = await updateProperty(propertyId, { name, address });
       res.status(200).json({
         message: '房产信息已更新',
         data: updatedProperty,
