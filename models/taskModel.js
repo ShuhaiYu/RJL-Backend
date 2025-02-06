@@ -34,6 +34,7 @@ async function getTaskById(taskId) {
       T.task_description,
       T.due_date,
       T.property_id,
+      T.repeat_frequency,
 
       P.name as property_name,
       P.address as property_address,
@@ -70,6 +71,7 @@ async function getTaskById(taskId) {
     task_name: first.task_name,
     task_description: first.task_description,
     due_date: first.due_date,
+    repeat_frequency: first.repeat_frequency,
     property_id: first.property_id,
 
     // 房产信息
@@ -161,14 +163,14 @@ async function deleteTask(taskId) {
   await pool.query(deleteSQL, [taskId]);
 }
 
-async function updateTask(taskId, { due_date, task_name, task_description }) {
+async function updateTask(taskId, { due_date, task_name, task_description, repeat_frequency }) {
   const updateSQL = `
     UPDATE "TASK"
-    SET due_date = $1, task_name = $2, task_description = $3
-    WHERE id = $4
+    SET due_date = $1, task_name = $2, task_description = $3, repeat_frequency = $4
+    WHERE id = $5
     RETURNING *;
   `;
-  const { rows } = await pool.query(updateSQL, [due_date, task_name, task_description, taskId]);
+  const { rows } = await pool.query(updateSQL, [due_date, task_name, task_description, repeat_frequency, taskId]);
   return rows[0];
 }
 

@@ -8,11 +8,7 @@ const app = express();
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const agencyRoutes = require('./routes/agencyRoutes');
-const authMiddleware = require('./middlewares/authMiddleware');
-
-const { createUserTable, /* ... */ } = require('./models/userModel');
-const { createRolePermissionTable, /* ... */ } = require('./models/rolePermissionModel');
-const { createAgencyTable, insertDummyAgencies } = require('./models/agencyModel');
+const { setupCronJobs } = require('./cron');
 
 // 解析 JSON 请求体
 app.use(express.json());
@@ -33,6 +29,9 @@ app.use((err, req, res, next) => {
 });
 
 require('./emailListener'); // 启动邮件监听
+
+// 启动 cron job
+setupCronJobs();
 
 // 启动服务
 const PORT = process.env.PORT || 3000;

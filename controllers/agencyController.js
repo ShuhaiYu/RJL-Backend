@@ -335,7 +335,7 @@ module.exports = {
   updateTask: async (req, res, next) => {
     try {
       const taskId = req.params.id;
-      const { due_date, task_name, task_description } = req.body;
+      const { due_date, task_name, task_description, repeat_frequency } = req.body;
       const task = await getTaskById(taskId);
       if (!task) {
         return res.status(404).json({ message: '任务不存在' });
@@ -349,7 +349,7 @@ module.exports = {
           return res.status(403).json({ message: '无权访问该任务' });
         }
       }
-      const updatedTask = await updateTask(taskId, { due_date, task_name, task_description });
+      const updatedTask = await updateTask(taskId, { due_date, task_name, task_description, repeat_frequency });
       res.status(200).json({
         message: '任务信息已更新',
         data: updatedTask,

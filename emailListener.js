@@ -181,6 +181,7 @@ imap.once('ready', () => {
 imap.on('end', () => {
   console.log('[IMAP] Connection ended. Will reconnect in 10s...');
   setTimeout(() => {
+    console.log('[IMAP] Reconnecting now...');
     imap.connect();
   }, 10000);
 });
@@ -189,6 +190,7 @@ imap.on('error', (err) => {
   console.error('[IMAP] Connection error:', err);
   console.log('[IMAP] Will reconnect in 10s...');
   setTimeout(() => {
+    console.log('[IMAP] Reconnecting now...');
     imap.connect();
   }, 10000);
 });
