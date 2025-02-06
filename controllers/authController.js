@@ -146,7 +146,7 @@ module.exports = {
       // 并把 newRefreshToken 返回给客户端。
 
       return res.status(200).json({
-        accessToken: newAccessToken,
+        access_token: newAccessToken,
       });
     } catch (err) {
       next(err);

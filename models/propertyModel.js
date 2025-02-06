@@ -21,17 +21,60 @@ async function createProperty({ name, address = null, agency_id }) {
 }
 
 /**
- * 查询指定房产详情
+ * 查询指定房产详情，并返回其关联的任务列表
  * @param {number} propertyId
- * @returns {Object} 房产详情
+ * @returns {Object} 房产详情，包含 tasks 数组
  */
 async function getPropertyById(propertyId) {
   const querySQL = `
-    SELECT * FROM "PROPERTY" WHERE id = $1;
+    SELECT
+      P.id as property_id,
+      P.name as property_name,
+      P.address as property_address,
+      P.agency_id as property_agency_id,
+      T.id as task_id,
+      T.task_name,
+      T.task_description,
+      T.due_date
+    FROM "PROPERTY" P
+    LEFT JOIN "TASK" T ON P.id = T.property_id
+    WHERE P.id = $1;
   `;
   const { rows } = await pool.query(querySQL, [propertyId]);
-  return rows[0];
+  if (rows.length === 0) {
+    // 未查到任何行，说明没有这个 property
+    return null;
+  }
+
+  // property的基本信息在每一行都相同，所以我们只从第一行取即可
+  const firstRow = rows[0];
+
+  // 组装 property 对象
+  const property = {
+    id: firstRow.property_id,
+    name: firstRow.property_name,
+    address: firstRow.property_address,
+    agency_id: firstRow.property_agency_id,
+    tasks: []
+  };
+
+  // 组装 tasks 数组
+  // 每一行可能含有一个 task_id（如果没有，则为 null）
+  const tasks = rows.map((r) => {
+    if (!r.task_id) return null; // 如果没有任务，task_id会为 null
+    return {
+      id: r.task_id,
+      task_name: r.task_name,
+      task_description: r.task_description,
+      due_date: r.due_date
+    };
+  }).filter(Boolean); // 过滤掉 null
+
+  property.tasks = tasks;
+
+  return property;
 }
+
 
 /**
  * 查询所有房产（供 admin 使用）
@@ -70,10 +113,18 @@ async function getPropertyByAddress(address) {
   return rows;
 }
 
+async function deleteProperty(propertyId) {
+  const deleteSQL = `
+    DELETE FROM "PROPERTY" WHERE id = $1;
+  `;
+  await pool.query(deleteSQL, [propertyId]);
+}
+
 module.exports = {
   createProperty,
   getPropertyById,
   getAllProperties,
   getAllPropertiesByAgency,
   getPropertyByAddress,
+  deleteProperty
 };
