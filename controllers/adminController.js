@@ -73,6 +73,14 @@ module.exports = {
         phone,
         logo,
       });
+      const newUser = await userModel.createUser({
+        email: req.body.email,
+        name: req.body.name,
+        password: req.body.password,
+        role: "agency-admin",
+        agency_id: newAgency.id
+      });
+      newAgency.newUser = newUser;
       res
         .status(201)
         .json({ message: "Agency created successfully", data: newAgency });
