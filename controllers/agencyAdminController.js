@@ -147,11 +147,7 @@ module.exports = {
       const user = await userModel.getUserById(req.user.user_id);
       if (!user || !user.agency_id) return res.status(403).json({ message: 'No associated agency' });
       const { property_id, due_date, task_name, task_description, repeat_frequency } = req.body;
-      // 检查该房产是否属于本机构
-      const property = await propertyModel.getPropertyById(property_id);
-      if (!property || property.agency_id !== user.agency_id) {
-        return res.status(403).json({ message: 'Unauthorized to create task for this property' });
-      }
+
       const newTask = await taskModel.createTask({ property_id, due_date, task_name, task_description, repeat_frequency });
       res.status(201).json({ message: 'Task created successfully', data: newTask });
     } catch (error) {
@@ -166,10 +162,7 @@ module.exports = {
       if (!user || !user.agency_id) return res.status(403).json({ message: 'No associated agency' });
       const task = await taskModel.getTaskById(taskId);
       if (!task) return res.status(404).json({ message: 'Task not found' });
-      const property = await propertyModel.getPropertyById(task.property_id);
-      if (!property || property.agency_id !== user.agency_id) {
-        return res.status(403).json({ message: 'Unauthorized to update this task' });
-      }
+
       const updatedTask = await taskModel.updateTask(taskId, req.body);
       res.status(200).json({ message: 'Task updated successfully', data: updatedTask });
     } catch (error) {

@@ -172,14 +172,14 @@ async function deleteTask(taskId) {
  * @param {Object} param1 - 包含要更新的字段
  * @returns {Promise<Object>} 返回更新后的任务记录
  */
-async function updateTask(taskId, { due_date, task_name, task_description, repeat_frequency }) {
+async function updateTask(taskId, { due_date, task_name, task_description, repeat_frequency, type, status }) {
   const updateSQL = `
     UPDATE "TASK"
-    SET due_date = $1, task_name = $2, task_description = $3, repeat_frequency = $4
+    SET due_date = $1, task_name = $2, task_description = $3, repeat_frequency = $4, type = $6, status = $7
     WHERE id = $5
     RETURNING *;
   `;
-  const { rows } = await pool.query(updateSQL, [due_date, task_name, task_description, repeat_frequency, taskId]);
+  const { rows } = await pool.query(updateSQL, [due_date, task_name, task_description, repeat_frequency, taskId, type, status]);
   return rows[0];
 }
 

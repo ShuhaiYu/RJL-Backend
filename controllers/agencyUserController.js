@@ -43,11 +43,7 @@ module.exports = {
       const user = await userModel.getUserById(req.user.user_id);
       if (!user || !user.agency_id) return res.status(403).json({ message: 'No associated agency' });
       const { property_id, due_date, task_name, task_description, repeat_frequency } = req.body;
-      // 检查该房产是否属于本机构
-      const property = await propertyModel.getPropertyById(property_id);
-      if (!property || property.agency_id !== user.agency_id) {
-        return res.status(403).json({ message: 'Unauthorized to create task for this property' });
-      }
+
       const newTask = await taskModel.createTask({ property_id, due_date, task_name, task_description, repeat_frequency });
       res.status(201).json({ message: 'Task created successfully', data: newTask });
     } catch (error) {
