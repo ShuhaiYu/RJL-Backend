@@ -1,22 +1,23 @@
 // controllers/authController.js
-require('dotenv').config();
-const nodemailer = require('nodemailer');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+require("dotenv").config();
+const nodemailer = require("nodemailer");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
-const { 
-  getUserByEmail, 
-  getUserById, 
-  updateUser, 
-  createUser 
-} = require('../models/userModel');
+const {
+  getUserByEmail,
+  getUserById,
+  updateUser,
+  createUser,
+} = require("../models/userModel");
 
-const { getUserPermissions } = require('../models/userPermissionModel'); // 从中间表查询权限
+const { getUserPermissions } = require("../models/userPermissionModel"); // 从中间表查询权限
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'fallback_access_secret';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret';
-const ACCESS_EXPIRES = process.env.JWT_ACCESS_EXPIRES || '15m';
-const REFRESH_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "fallback_access_secret";
+const REFRESH_SECRET =
+  process.env.JWT_REFRESH_SECRET || "fallback_refresh_secret";
+const ACCESS_EXPIRES = process.env.JWT_ACCESS_EXPIRES || "15m";
+const REFRESH_EXPIRES = process.env.JWT_REFRESH_EXPIRES || "7d";
 
 module.exports = {
   // 1) Login -> returns { accessToken, refreshToken }
@@ -25,18 +26,20 @@ module.exports = {
       const { email, password } = req.body;
       const user = await getUserByEmail(email);
       if (!user) {
-        return res.status(401).json({ message: 'User does not exist' });
+        return res.status(401).json({ message: "User does not exist" });
       }
 
       // Check if account is active
       if (!user.is_active) {
-        return res.status(403).json({ message: 'Account has been locked or is inactive' });
+        return res
+          .status(403)
+          .json({ message: "Account has been locked or is inactive" });
       }
 
       // Validate password
       const match = await bcrypt.compare(password, user.password);
       if (!match) {
-        return res.status(401).json({ message: 'Incorrect password' });
+        return res.status(401).json({ message: "Incorrect password" });
       }
 
       // Retrieve user's permissions and include them in the token payload
@@ -44,19 +47,23 @@ module.exports = {
       const accessPayload = {
         user_id: user.id,
         role: user.role,
-        permissions: permissions // e.g. [{ permission_value: 'create', permission_scope: 'user' }, ...]
+        permissions: permissions, // e.g. [{ permission_value: 'create', permission_scope: 'user' }, ...]
       };
-      const accessToken = jwt.sign(accessPayload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES });
+      const accessToken = jwt.sign(accessPayload, ACCESS_SECRET, {
+        expiresIn: ACCESS_EXPIRES,
+      });
 
       // Generate refresh token (without permissions)
       const refreshPayload = { user_id: user.id, role: user.role };
-      const refreshToken = jwt.sign(refreshPayload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
+      const refreshToken = jwt.sign(refreshPayload, REFRESH_SECRET, {
+        expiresIn: REFRESH_EXPIRES,
+      });
 
       // Update refresh token in the user record using updateUser
       await updateUser(user.id, { refresh_token: refreshToken });
 
       return res.status(200).json({
-        message: 'Login successful',
+        message: "Login successful",
         accessToken,
         refreshToken,
         role: user.role,
@@ -73,14 +80,19 @@ module.exports = {
       const { email, password, name, role, agency_id } = req.body;
       const existingUser = await getUserByEmail(email);
       if (existingUser) {
-        return res.status(400).json({ message: 'This email is already registered, please use another email' });
+        return res
+          .status(400)
+          .json({
+            message:
+              "This email is already registered, please use another email",
+          });
       }
 
       // Hash the password
       const hashedPassword = await bcrypt.hash(password, 10);
       // Use provided name or fallback to email
       const finalName = name || email;
-      const userRole = role || 'user';
+      const userRole = role || "user";
 
       // Create user in the database
       const newUser = await createUser({
@@ -92,7 +104,7 @@ module.exports = {
       });
 
       return res.status(201).json({
-        message: 'Registration successful',
+        message: "Registration successful",
         data: {
           id: newUser.id,
           email: newUser.email,
@@ -109,7 +121,7 @@ module.exports = {
     try {
       const { refreshToken } = req.body;
       if (!refreshToken) {
-        return res.status(400).json({ message: 'Missing refreshToken' });
+        return res.status(400).json({ message: "Missing refreshToken" });
       }
 
       // Verify refresh token and retrieve payload
@@ -117,18 +129,20 @@ module.exports = {
       try {
         payload = jwt.verify(refreshToken, REFRESH_SECRET);
       } catch (err) {
-        return res.status(403).json({ message: 'Refresh token expired or invalid' });
+        return res
+          .status(403)
+          .json({ message: "Refresh token expired or invalid" });
       }
 
       // Retrieve user by user_id from token payload
       const user = await getUserById(payload.user_id);
       if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+        return res.status(404).json({ message: "User not found" });
       }
 
       // Optional: check if stored refresh_token matches the provided one
       if (user.refresh_token !== refreshToken) {
-        return res.status(403).json({ message: 'Invalid refresh token' });
+        return res.status(403).json({ message: "Invalid refresh token" });
       }
 
       // Retrieve permissions and generate a new access token
@@ -138,7 +152,9 @@ module.exports = {
         role: user.role,
         permissions: permissions,
       };
-      const newAccessToken = jwt.sign(newAccessPayload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES });
+      const newAccessToken = jwt.sign(newAccessPayload, ACCESS_SECRET, {
+        expiresIn: ACCESS_EXPIRES,
+      });
 
       return res.status(200).json({
         accessToken: newAccessToken,
@@ -153,25 +169,25 @@ module.exports = {
     try {
       const { email } = req.body;
       if (!email) {
-        return res.status(400).json({ message: 'Email is required' });
+        return res.status(400).json({ message: "Email is required" });
       }
 
       // Find user by email
       const user = await getUserByEmail(email);
       if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+        return res.status(404).json({ message: "User not found" });
       }
 
       // Generate a reset token valid for 15 minutes
       const resetToken = jwt.sign(
         { user_id: user.id, email: email },
         ACCESS_SECRET,
-        { expiresIn: '15m' }
+        { expiresIn: "15m" }
       );
 
       // Create transporter using Gmail (adjust as needed)
       const transporter = nodemailer.createTransport({
-        service: 'Gmail',
+        service: "Gmail",
         auth: {
           user: process.env.GMAIL_USER,
           pass: process.env.GMAIL_PASSWORD,
@@ -179,12 +195,16 @@ module.exports = {
       });
 
       // Construct reset URL (adjust FRONTEND_URL as needed)
-      const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password/change?token=${resetToken}&email=${encodeURIComponent(email)}`;
+      const resetUrl = `${
+        process.env.FRONTEND_URL
+      }/auth/reset-password/change?token=${resetToken}&email=${encodeURIComponent(
+        email
+      )}`;
 
       const mailOptions = {
         from: process.env.GMAIL_USER,
         to: email,
-        subject: 'Reset Your Password',
+        subject: "Reset Your Password",
         html: `
           <p>Hello,</p>
           <p>You have requested a password reset. Please click the link below to reset your password (valid for 15 minutes):</p>
@@ -195,7 +215,9 @@ module.exports = {
 
       await transporter.sendMail(mailOptions);
 
-      return res.status(200).json({ message: 'Reset link sent to email', resetToken });
+      return res
+        .status(200)
+        .json({ message: "Reset link sent to email", resetToken });
     } catch (err) {
       next(err);
     }
@@ -206,10 +228,15 @@ module.exports = {
     try {
       const { email, token, password, password_confirmation } = req.body;
       if (!email || !token || !password || !password_confirmation) {
-        return res.status(400).json({ message: 'Email, token, password, and password confirmation are required' });
+        return res
+          .status(400)
+          .json({
+            message:
+              "Email, token, password, and password confirmation are required",
+          });
       }
       if (password !== password_confirmation) {
-        return res.status(400).json({ message: 'Passwords do not match' });
+        return res.status(400).json({ message: "Passwords do not match" });
       }
 
       // Verify the reset token
@@ -217,25 +244,27 @@ module.exports = {
       try {
         decoded = jwt.verify(token, ACCESS_SECRET);
       } catch (error) {
-        return res.status(401).json({ message: 'Token expired or invalid' });
+        return res.status(401).json({ message: "Token expired or invalid" });
       }
 
       // Check if token email matches request email
       if (decoded.email !== email) {
-        return res.status(401).json({ message: 'Token does not match the user' });
+        return res
+          .status(401)
+          .json({ message: "Token does not match the user" });
       }
 
       // Find user by email
       const user = await getUserByEmail(email);
       if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+        return res.status(404).json({ message: "User not found" });
       }
 
       // Hash new password and update user record using updateUser
       const hashedPassword = await bcrypt.hash(password, 10);
       await updateUser(user.id, { password: hashedPassword });
 
-      return res.status(200).json({ message: 'Password reset successful' });
+      return res.status(200).json({ message: "Password reset successful" });
     } catch (err) {
       next(err);
     }
@@ -246,7 +275,7 @@ module.exports = {
     try {
       const { refreshToken } = req.body;
       if (!refreshToken) {
-        return res.status(400).json({ message: 'Missing refreshToken' });
+        return res.status(400).json({ message: "Missing refreshToken" });
       }
 
       // Verify refresh token to get user_id
@@ -254,24 +283,28 @@ module.exports = {
       try {
         payload = jwt.verify(refreshToken, REFRESH_SECRET);
       } catch (err) {
-        return res.status(403).json({ message: 'Refresh token expired or invalid' });
+        return res
+          .status(403)
+          .json({ message: "Refresh token expired or invalid" });
       }
 
       // Retrieve user by id from token
       const user = await getUserById(payload.user_id);
       if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+        return res.status(404).json({ message: "User not found" });
       }
 
       // Optional: check if stored refresh_token matches the provided one
       if (user.refresh_token !== refreshToken) {
-        return res.status(403).json({ message: 'Invalid refresh token' });
+        return res.status(403).json({ message: "Invalid refresh token" });
       }
 
       // Revoke refresh token by updating user record using updateUser
       await updateUser(user.id, { refresh_token: null });
 
-      return res.status(200).json({ message: 'Logout successful, refresh token revoked' });
+      return res
+        .status(200)
+        .json({ message: "Logout successful, refresh token revoked" });
     } catch (err) {
       next(err);
     }
@@ -282,8 +315,12 @@ module.exports = {
     try {
       // Use user_id from token (populated by authenticateToken)
       const user = await getUserById(req.user.user_id);
+      // 获取用户权限
+      const permissions = await getUserPermissions(req.user.user_id);
+      // 将权限附加到用户对象中
+      user.permissions = permissions;
       if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+        return res.status(404).json({ message: "User not found" });
       }
       return res.status(200).json(user);
     } catch (err) {
