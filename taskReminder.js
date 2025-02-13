@@ -46,7 +46,6 @@ async function findTasksToRemind() {
     c.name AS contact_name,
     c.email AS contact_email,
 
-    p.name AS property_name,
     p.address AS property_address
 
   FROM "TASK" t

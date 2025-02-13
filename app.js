@@ -10,6 +10,8 @@ const adminRoutes = require('./routes/adminRoutes');
 const superuserRoutes = require('./routes/superuserRoutes');
 const agencyAdminRoutes = require('./routes/agencyAdminRoutes');
 const agencyUserRoutes = require('./routes/agencyUserRoutes');
+const testRouter = require('./routes/test'); 
+
 const { setupCronJobs } = require('./cron');
 
 // 解析 JSON 请求体
@@ -25,6 +27,7 @@ app.use('/superuser', superuserRoutes);
 app.use('/admin', adminRoutes);
 app.use('/agency/admin', agencyAdminRoutes);
 app.use('/agency/user', agencyUserRoutes);
+app.use('/test', testRouter);
 
 // 错误处理
 app.use((err, req, res, next) => {

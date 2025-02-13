@@ -11,7 +11,7 @@ router.post('/login', authController.login);
 router.post('/register', authController.register);
 
 // Refresh token (get new access token)
-router.post('/refresh', authMiddleware.authenticateToken, authController.refreshToken);
+router.post('/refresh',  authController.refreshToken);
 
 // Forgot password
 router.post('/forgot-password', authController.forgotPassword);

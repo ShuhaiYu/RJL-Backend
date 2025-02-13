@@ -15,7 +15,12 @@ function setupCronJobs() {
     } catch (err) {
       console.error("[CRON] sendReminders error:", err);
     }
-  });
+  },
+  {
+    scheduled: true,
+    timezone: 'Australia/Melbourne',
+  }
+);
 
   // 每分钟执行一次
   // cron.schedule('* * * * *', async () => {
