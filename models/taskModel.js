@@ -12,13 +12,13 @@ const pool = require('../config/db');
  * @param {string|null} [param0.repeat_frequency] - 重复频率（可选）
  * @returns {Promise<Object>} 新创建的任务记录
  */
-async function createTask({ property_id, due_date = null, task_name, task_description = null, repeat_frequency = null }) {
+async function createTask({ property_id, due_date = null, task_name, task_description = null, repeat_frequency = null, type = null, status = null }) {
   const insertSQL = `
-    INSERT INTO "TASK" (property_id, due_date, task_name, task_description, repeat_frequency, is_active)
-    VALUES ($1, $2, $3, $4, $5, true)
+    INSERT INTO "TASK" (property_id, due_date, task_name, task_description, repeat_frequency, type, status, is_active)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, true)
     RETURNING *;
   `;
-  const values = [property_id, due_date, task_name, task_description, repeat_frequency];
+  const values = [property_id, due_date, task_name, task_description, repeat_frequency, type, status];
   const { rows } = await pool.query(insertSQL, values);
   return rows[0];
 }

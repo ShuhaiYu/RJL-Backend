@@ -1,18 +1,27 @@
 // controllers/superuserController.js
 
-const userModel = require('../models/userModel');
-const agencyModel = require('../models/agencyModel');
-const propertyModel = require('../models/propertyModel');
-const taskModel = require('../models/taskModel');
-const contactModel = require('../models/contactModel');
+const userModel = require("../models/userModel");
+const agencyModel = require("../models/agencyModel");
+const propertyModel = require("../models/propertyModel");
+const taskModel = require("../models/taskModel");
+const contactModel = require("../models/contactModel");
+const emailModel = require("../models/emailModel");
 
 module.exports = {
   // ----- 用户管理 -----
   createUser: async (req, res, next) => {
     try {
       const { email, name, password, role, agency_id } = req.body;
-      const newUser = await userModel.insertUser({ email, name, password, role, agency_id });
-      res.status(201).json({ message: 'User created successfully', data: newUser });
+      const newUser = await userModel.insertUser({
+        email,
+        name,
+        password,
+        role,
+        agency_id,
+      });
+      res
+        .status(201)
+        .json({ message: "User created successfully", data: newUser });
     } catch (error) {
       next(error);
     }
@@ -22,7 +31,7 @@ module.exports = {
     try {
       const user_id = req.params.id;
       const user = await userModel.getUserById(user_id);
-      if (!user) return res.status(404).json({ message: 'User not found' });
+      if (!user) return res.status(404).json({ message: "User not found" });
       res.status(200).json(user);
     } catch (error) {
       next(error);
@@ -33,7 +42,9 @@ module.exports = {
     try {
       const user_id = req.params.id;
       const updatedUser = await userModel.updateUser(user_id, req.body);
-      res.status(200).json({ message: 'User updated successfully', data: updatedUser });
+      res
+        .status(200)
+        .json({ message: "User updated successfully", data: updatedUser });
     } catch (error) {
       next(error);
     }
@@ -43,7 +54,12 @@ module.exports = {
     try {
       const user_id = req.params.id;
       const deletedUser = await userModel.deleteUser(user_id);
-      res.status(200).json({ message: 'User (soft) deleted successfully', data: deletedUser });
+      res
+        .status(200)
+        .json({
+          message: "User (soft) deleted successfully",
+          data: deletedUser,
+        });
     } catch (error) {
       next(error);
     }
@@ -62,8 +78,15 @@ module.exports = {
   createAgency: async (req, res, next) => {
     try {
       const { agency_name, address, phone, logo } = req.body;
-      const newAgency = await agencyModel.createAgency({ agency_name, address, phone, logo });
-      res.status(201).json({ message: 'Agency created successfully', data: newAgency });
+      const newAgency = await agencyModel.createAgency({
+        agency_name,
+        address,
+        phone,
+        logo,
+      });
+      res
+        .status(201)
+        .json({ message: "Agency created successfully", data: newAgency });
     } catch (error) {
       next(error);
     }
@@ -73,7 +96,7 @@ module.exports = {
     try {
       const agencyId = req.params.id;
       const agency = await agencyModel.getAgencyByAgencyId(agencyId);
-      if (!agency) return res.status(404).json({ message: 'Agency not found' });
+      if (!agency) return res.status(404).json({ message: "Agency not found" });
       res.status(200).json(agency);
     } catch (error) {
       next(error);
@@ -84,7 +107,9 @@ module.exports = {
     try {
       const agencyId = req.params.id;
       const updatedAgency = await agencyModel.updateAgency(agencyId, req.body);
-      res.status(200).json({ message: 'Agency updated successfully', data: updatedAgency });
+      res
+        .status(200)
+        .json({ message: "Agency updated successfully", data: updatedAgency });
     } catch (error) {
       next(error);
     }
@@ -94,7 +119,9 @@ module.exports = {
     try {
       const agencyId = req.params.id;
       const deletedAgency = await agencyModel.deleteAgency(agencyId);
-      res.status(200).json({ message: 'Agency deleted successfully', data: deletedAgency });
+      res
+        .status(200)
+        .json({ message: "Agency deleted successfully", data: deletedAgency });
     } catch (error) {
       next(error);
     }
@@ -113,8 +140,14 @@ module.exports = {
   createProperty: async (req, res, next) => {
     try {
       const { name, address, agency_id } = req.body;
-      const newProperty = await propertyModel.createProperty({ name, address, agency_id });
-      res.status(201).json({ message: 'Property created successfully', data: newProperty });
+      const newProperty = await propertyModel.createProperty({
+        name,
+        address,
+        agency_id,
+      });
+      res
+        .status(201)
+        .json({ message: "Property created successfully", data: newProperty });
     } catch (error) {
       next(error);
     }
@@ -124,7 +157,8 @@ module.exports = {
     try {
       const propertyId = req.params.id;
       const property = await propertyModel.getPropertyById(propertyId);
-      if (!property) return res.status(404).json({ message: 'Property not found' });
+      if (!property)
+        return res.status(404).json({ message: "Property not found" });
       res.status(200).json(property);
     } catch (error) {
       next(error);
@@ -134,8 +168,16 @@ module.exports = {
   updateProperty: async (req, res, next) => {
     try {
       const propertyId = req.params.id;
-      const updatedProperty = await propertyModel.updateProperty(propertyId, req.body);
-      res.status(200).json({ message: 'Property updated successfully', data: updatedProperty });
+      const updatedProperty = await propertyModel.updateProperty(
+        propertyId,
+        req.body
+      );
+      res
+        .status(200)
+        .json({
+          message: "Property updated successfully",
+          data: updatedProperty,
+        });
     } catch (error) {
       next(error);
     }
@@ -145,7 +187,12 @@ module.exports = {
     try {
       const propertyId = req.params.id;
       const deletedProperty = await propertyModel.deleteProperty(propertyId);
-      res.status(200).json({ message: 'Property deleted successfully', data: deletedProperty });
+      res
+        .status(200)
+        .json({
+          message: "Property deleted successfully",
+          data: deletedProperty,
+        });
     } catch (error) {
       next(error);
     }
@@ -163,9 +210,23 @@ module.exports = {
   // ----- 任务管理 -----
   createTask: async (req, res, next) => {
     try {
-      const { property_id, due_date, task_name, task_description, repeat_frequency } = req.body;
-      const newTask = await taskModel.createTask({ property_id, due_date, task_name, task_description, repeat_frequency });
-      res.status(201).json({ message: 'Task created successfully', data: newTask });
+      const {
+        property_id,
+        due_date,
+        task_name,
+        task_description,
+        repeat_frequency,
+      } = req.body;
+      const newTask = await taskModel.createTask({
+        property_id,
+        due_date,
+        task_name,
+        task_description,
+        repeat_frequency,
+      });
+      res
+        .status(201)
+        .json({ message: "Task created successfully", data: newTask });
     } catch (error) {
       next(error);
     }
@@ -175,7 +236,7 @@ module.exports = {
     try {
       const taskId = req.params.id;
       const task = await taskModel.getTaskById(taskId);
-      if (!task) return res.status(404).json({ message: 'Task not found' });
+      if (!task) return res.status(404).json({ message: "Task not found" });
       res.status(200).json(task);
     } catch (error) {
       next(error);
@@ -186,7 +247,9 @@ module.exports = {
     try {
       const taskId = req.params.id;
       const updatedTask = await taskModel.updateTask(taskId, req.body);
-      res.status(200).json({ message: 'Task updated successfully', data: updatedTask });
+      res
+        .status(200)
+        .json({ message: "Task updated successfully", data: updatedTask });
     } catch (error) {
       next(error);
     }
@@ -196,7 +259,9 @@ module.exports = {
     try {
       const taskId = req.params.id;
       const deletedTask = await taskModel.deleteTask(taskId);
-      res.status(200).json({ message: 'Task deleted successfully', data: deletedTask });
+      res
+        .status(200)
+        .json({ message: "Task deleted successfully", data: deletedTask });
     } catch (error) {
       next(error);
     }
@@ -215,8 +280,15 @@ module.exports = {
   createContact: async (req, res, next) => {
     try {
       const { name, phone, email, task_id } = req.body;
-      const newContact = await contactModel.createContact({ name, phone, email, task_id });
-      res.status(201).json({ message: 'Contact created successfully', data: newContact });
+      const newContact = await contactModel.createContact({
+        name,
+        phone,
+        email,
+        task_id,
+      });
+      res
+        .status(201)
+        .json({ message: "Contact created successfully", data: newContact });
     } catch (error) {
       next(error);
     }
@@ -226,7 +298,8 @@ module.exports = {
     try {
       const contactId = req.params.id;
       const contact = await contactModel.getContactById(contactId);
-      if (!contact) return res.status(404).json({ message: 'Contact not found' });
+      if (!contact)
+        return res.status(404).json({ message: "Contact not found" });
       res.status(200).json(contact);
     } catch (error) {
       next(error);
@@ -236,8 +309,16 @@ module.exports = {
   updateContact: async (req, res, next) => {
     try {
       const contactId = req.params.id;
-      const updatedContact = await contactModel.updateContactDetail(contactId, req.body);
-      res.status(200).json({ message: 'Contact updated successfully', data: updatedContact });
+      const updatedContact = await contactModel.updateContactDetail(
+        contactId,
+        req.body
+      );
+      res
+        .status(200)
+        .json({
+          message: "Contact updated successfully",
+          data: updatedContact,
+        });
     } catch (error) {
       next(error);
     }
@@ -247,7 +328,12 @@ module.exports = {
     try {
       const contactId = req.params.id;
       const deletedContact = await contactModel.deleteContact(contactId);
-      res.status(200).json({ message: 'Contact deleted successfully', data: deletedContact });
+      res
+        .status(200)
+        .json({
+          message: "Contact deleted successfully",
+          data: deletedContact,
+        });
     } catch (error) {
       next(error);
     }
@@ -259,6 +345,146 @@ module.exports = {
       res.status(200).json(contacts);
     } catch (error) {
       next(error);
+    }
+  },
+
+  /**
+   * POST /agency/create-property-by-email
+   * @body {string} textBody - 邮件正文
+   * @body {string} subject  - 邮件主题
+   * @body {string} from     - 发件人（含名称与邮箱）
+   */
+  createPropertyByEmail: async (req, res, next) => {
+    try {
+      const { subject, from, textBody, htmlBody } = req.body;
+      if (!textBody) {
+        return res.status(400).json({ message: "Missing textBody." });
+      }
+
+      // 1) 定义地址正则
+      const addressRegex =
+        /\b\d+[A-Za-z\/]*[\w'\- ]*?(?:,\s*)?[A-Za-z'\- ]+(?:,\s*)?(VIC|NSW|QLD|ACT|TAS|NT|WA)\s*\d{4}\b/gi;
+
+      // 2) 在正文中匹配所有地址
+      const matches = textBody.match(addressRegex) || [];
+      console.log("Address matches:", matches);
+
+      // 3) 去重
+      const uniqueAddresses = [...new Set(matches.map((m) => m.trim()))];
+      console.log("Unique addresses:", uniqueAddresses);
+
+      // 如果一个地址都没有，直接返回
+      if (uniqueAddresses.length === 0) {
+        return res.status(200).json({
+          message: "No address found in this email. Skip creation.",
+          createdList: [],
+        });
+      }
+
+      // 4) 解析出联系人信息
+      let contactName = "Unknown Contact";
+      let contactEmail = "N/A";
+      const fromRegex = /^(.+?)\s*<(.*)>$/;
+      const matchedFrom = (from || "").trim().match(fromRegex);
+      if (matchedFrom) {
+        contactName = matchedFrom[1].trim() || "Unknown Contact";
+        contactEmail = matchedFrom[2].trim() || "N/A";
+      } else {
+        if ((from || "").includes("@")) {
+          contactEmail = from;
+        }
+      }
+
+      // 电话正则示例
+      const phoneRegex = /\b(?:\+61|0)(?:[23478])(?:[\s-]?\d){7,9}\b/g;
+      const phoneMatches = textBody.match(phoneRegex) || [];
+      const contactPhone = phoneMatches.length > 0 ? phoneMatches[0] : "N/A";
+
+      // 5) 为每个地址循环处理
+      const createdList = [];
+
+      for (const address of uniqueAddresses) {
+        // 5.1 检查是否已存在
+        const existingProperty = await propertyModel.getPropertyByAddress(
+          address
+        );
+        if (existingProperty.length > 0) {
+          console.log(
+            `Property already exists for address: ${address}. Skip creation.`
+          );
+          continue;
+        }
+
+        // 新增：根据 contactEmail 在 user 表查找 userId
+        let userId = null;
+        if (contactEmail && contactEmail !== "N/A") {
+          const existingUser = await userModel.getUserByEmail(contactEmail);
+          if (existingUser) {
+            userId = existingUser.id;
+          }
+        }
+
+        // 5.2 创建 Property
+        // 注：此时 propertyModel 里应支持 createProperty({address, user_id})
+        const newProperty = await propertyModel.createProperty({
+          address,
+          user_id: userId, // 如果没找到就是 null
+        });
+
+        // 5.3 创建 Task（示例：如果正文包含关键词 "safety check"）
+        let taskName = "Auto-Generated Task";
+        let taskDescription = "No recognized task from email.";
+        if (textBody.toLowerCase().includes("safety check")) {
+          taskName = "Safety Check";
+          taskDescription = "Mail indicates a safety check job.";
+        }
+
+        const newTask = await taskModel.createTask({
+          property_id: newProperty.id,
+          due_date: null,
+          task_name: taskName,
+          task_description: taskDescription,
+          type: "auto-generated",
+          status: "unknown",
+
+        });
+
+        // 5.4 创建 Contact（联系人）
+        const newContact = await contactModel.createContact({
+          name: contactName,
+          phone: contactPhone,
+          email: contactEmail,
+          task_id: newTask.id,
+        });
+
+        // 5.5 保存邮件到 Email 表
+        const newEmail = await emailModel.createEmailRecord({
+          subject: subject || "No Subject",
+          sender: from || "Unknown Sender",
+          email_body: textBody || "No Content",
+          html: htmlBody || "",
+          task_id: newTask.id,
+          property_id: newProperty.id,
+        });
+
+        // 5.6 记录结果
+        createdList.push({
+          propertyId: newProperty.id,
+          taskId: newTask.id,
+          contactId: newContact.id,
+          emailId: newEmail.id,
+          address,
+        });
+      }
+
+      // 6) 返回结果
+      return res.status(201).json({
+        message: "Email processed successfully.",
+        createdCount: createdList.length,
+        createdList,
+      });
+    } catch (err) {
+      next(err);
     }
   },
 };

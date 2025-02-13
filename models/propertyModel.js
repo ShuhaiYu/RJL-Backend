@@ -12,13 +12,13 @@ const pool = require("../config/db");
  * @param {number} param0.agency_id - 所属机构的 ID
  * @returns {Promise<Object>} 返回新创建的房产记录
  */
-async function createProperty({ name, address = null, agency_id }) {
+async function createProperty({  address, user_id}) {
   const insertSQL = `
-    INSERT INTO "PROPERTY" (name, address, agency_id, is_active)
-    VALUES ($1, $2, $3, true)
+    INSERT INTO "PROPERTY" (address, user_id, is_active)
+    VALUES ($1, $2, true)
     RETURNING *;
   `;
-  const values = [name, address, agency_id];
+  const values = [ address, user_id ];
   const { rows } = await pool.query(insertSQL, values);
   return rows[0];
 }
@@ -114,7 +114,7 @@ async function listProperties(requestingUser) {
       WHERE is_active = true AND user_id = $1
       ORDER BY id DESC;
     `;
-    values.push(requestingUser.agency_id);
+    values.push(requestingUser.id);
   }
   const { rows } = await pool.query(querySQL, values);
   return rows;

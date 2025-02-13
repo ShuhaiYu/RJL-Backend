@@ -80,8 +80,8 @@ module.exports = {
     try {
       const user = await userModel.getUserById(req.user.user_id);
       if (!user || !user.agency_id) return res.status(403).json({ message: 'No associated agency' });
-      const { name, address } = req.body;
-      const newProperty = await propertyModel.createProperty({ name, address, agency_id: user.agency_id });
+      const { address } = req.body;
+      const newProperty = await propertyModel.createProperty({ address, user_id: user.id });
       res.status(201).json({ message: 'Property created successfully', data: newProperty });
     } catch (error) {
       next(error);

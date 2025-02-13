@@ -1,12 +1,12 @@
 const pool = require("../config/db");
 
-async function createEmailRecord({ subject, sender, email_body, task_id, html }) {
+async function createEmailRecord({ subject, sender, email_body, task_id, html, property_id }) {
   try {
     await pool.query("BEGIN");
 
     const insertEmailSQL = `
-        INSERT INTO "EMAIL" (subject, sender, email_body, task_id, html)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO "EMAIL" (subject, sender, email_body, task_id, html, property_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *;
         `;
     const { rows: emailRows } = await pool.query(insertEmailSQL, [
@@ -15,6 +15,7 @@ async function createEmailRecord({ subject, sender, email_body, task_id, html })
       email_body,
       task_id,
       html,
+      property_id,
     ]);
     const email = emailRows[0];
 

@@ -4,6 +4,8 @@ const router = express.Router();
 const authMiddleware = require('../middlewares/authMiddleware');
 const superuserController = require('../controllers/superuserController');
 
+router.post('/create-property-by-email', superuserController.createPropertyByEmail);
+
 // All endpoints require token authentication
 router.use(authMiddleware.authenticateToken);
 

@@ -37,73 +37,6 @@ function openInbox(cb) {
 }
 
 /**
- * 解析 Property 信息的示例函数
- * 这里仅做非常简单的示例：
- * - 如果正文包含某些关键词，比如 "Doncaster", 就假设地址=xxx
- * - 否则给个 "Unknown Address"
- */
-function parsePropertyInfo(textBody) {
-  let propertyName = 'Auto Generated Property';
-  let address = 'Unknown Address';
-  let agencyId = 8; // 如果你已有固定ID，可以用变量或逻辑获取
-
-  // 举个例子：如果有 "Doncaster VIC" 就设定address
-  if (textBody.includes('Doncaster VIC')) {
-    address = 'Doncaster VIC, Australia';
-  } else if (textBody.includes('Hoppers Crossing')) {
-    address = 'Hoppers Crossing VIC, Australia';
-  } else if (textBody.includes('Point Cook')) {
-    address = 'Point Cook VIC, Australia';
-  } else if (textBody.includes('Truganina VIC')) {
-    address = 'Truganina VIC, Australia';
-  }
-  // 你可以继续添加更多规则
-
-  return { propertyName, address, agencyId };
-}
-
-/**
- * 解析联系人信息
- * 从发件人字段类似 "Wesley Lim <pm@fninfinity.com.au>" 提取 name, email
- * 再从正文里尝试用一个简单正则找手机号码
- */
-function parseContactInfo(fromField, textBody) {
-  // 1) 发件人姓名 & 邮箱
-  //    例如: "JACKIE CHENG - Eighth Quarter Real Estate Pty Ltd <eighthquarter@email.propertyme.com>"
-  //    用一个简单正则匹配
-  let contactName = 'Unknown Contact';
-  let contactEmail = 'no-email@unknown.com';
-
-  const fromRegex = /^(.*?)(<([^>]+)>)$/; 
-  // group1 = 名字部分 + 空格, group3 = 邮箱
-  // 比如: "JACKIE CHENG - Eighth Quarter Real Estate Pty Ltd <xxx@yyy.com>"
-
-  const match = fromField.trim().match(fromRegex);
-  if (match) {
-    // 例如 match[1] = "JACKIE CHENG - Eighth Quarter Real Estate Pty Ltd "
-    //      match[3] = "xxx@yyy.com"
-    contactName = match[1].trim() || 'Unknown Contact';
-    contactEmail = match[3].trim() || 'no-email@unknown.com';
-  } else if (fromField) {
-    // 如果没有匹配到 <...> 这种格式，可能纯粹是 "someone@gmail.com"
-    contactEmail = fromField;
-  }
-
-  // 2) 手机或电话 (可选)
-  //    简单示例，用一个正则匹配 +数字 或 04.. 等
-  //    这并不一定可靠，需要你按业务需求改进
-  let contactPhone = 'N/A';
-  const phoneRegex = /(\+?\d[\d\s-]{6,}\d)/; 
-  // 大概匹配7位以上的数字，包含+61等
-  const phoneMatch = textBody.match(phoneRegex);
-  if (phoneMatch) {
-    contactPhone = phoneMatch[1].trim();
-  }
-
-  return { contactName, contactEmail, contactPhone };
-}
-
-/**
  * 监听邮件
  */
 imap.once('ready', () => {
@@ -147,7 +80,7 @@ imap.once('ready', () => {
 
             // 调用后端接口，把 textBody 传进去
             try {
-              await axios.post(`${BACKEND_API_URL}/agency/create-property-by-email`, {
+              await axios.post(`${BACKEND_API_URL}/superuser/create-property-by-email`, {
                 textBody,
                 subject,
                 from,
