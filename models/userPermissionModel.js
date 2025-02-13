@@ -35,7 +35,15 @@ async function getUserPermissions(user_id) {
     `;
     try {
       const { rows } = await pool.query(text, [user_id]);
-      return rows;
+
+      // 格式化数据
+      return rows.reduce((acc, {permission_scope, permission_value}) => {
+        if (!acc[permission_scope]) {
+          acc[permission_scope] = [];
+        }
+        acc[permission_scope].push(permission_value);
+        return acc;
+      }, {});
     } catch (error) {
       console.error("Error in getUserPermissions:", error);
       throw error;
