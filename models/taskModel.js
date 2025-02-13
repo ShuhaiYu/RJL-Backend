@@ -3,28 +3,30 @@ const pool = require('../config/db');
 
 /**
  * 创建任务（Task）
+ * 插入时将 is_active 设置为 true
  * @param {Object} param0
  * @param {number} param0.property_id - 房产 ID
  * @param {string|Date} [param0.due_date] - 截止日期
  * @param {string} param0.task_name - 任务名称
  * @param {string} [param0.task_description] - 任务描述
- * @returns {Object} 新创建的任务记录
+ * @param {string|null} [param0.repeat_frequency] - 重复频率（可选）
+ * @returns {Promise<Object>} 新创建的任务记录
  */
-async function createTask({ property_id, due_date = null, task_name, task_description = null }) {
+async function createTask({ property_id, due_date = null, task_name, task_description = null, repeat_frequency = null }) {
   const insertSQL = `
-    INSERT INTO "TASK" (property_id, due_date, task_name, task_description)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO "TASK" (property_id, due_date, task_name, task_description, repeat_frequency, is_active)
+    VALUES ($1, $2, $3, $4, $5, true)
     RETURNING *;
   `;
-  const values = [property_id, due_date, task_name, task_description];
+  const values = [property_id, due_date, task_name, task_description, repeat_frequency];
   const { rows } = await pool.query(insertSQL, values);
   return rows[0];
 }
 
 /**
- * 查询指定任务详情，包含所属房产信息，以及所有联系人
+ * 查询指定任务详情，包含所属房产信息，以及所有联系人和邮件（仅返回激活的任务）
  * @param {number} taskId
- * @returns {Object} 任务详情，包含 property_xxx 字段和 contacts 数组和 emails 数组
+ * @returns {Promise<Object|null>} 任务详情，包含 property_xxx 字段、contacts 数组和 emails 数组
  */
 async function getTaskById(taskId) {
   const querySQL = `
@@ -33,136 +35,143 @@ async function getTaskById(taskId) {
       T.task_name,
       T.task_description,
       T.due_date,
-      T.property_id,
       T.repeat_frequency,
-
-      P.name as property_name,
+      T.property_id,
+      T.status,
+      t.type,
+      
       P.address as property_address,
-      P.agency_id as property_agency_id,
-
+      
       C.id as contact_id,
       C.name as contact_name,
       C.phone as contact_phone,
       C.email as contact_email,
-
+      
       E.id as email_id,
       E.subject as email_subject,
       E.sender as email_sender,
       E.email_body,
       E.html
-
     FROM "TASK" T
     LEFT JOIN "PROPERTY" P ON T.property_id = P.id
-    LEFT JOIN "CONTACT" C ON C.task_id = T.id
+    LEFT JOIN "CONTACT" C ON C.task_id = T.id AND C.is_active = true
     LEFT JOIN "EMAIL" E ON E.task_id = T.id
-    WHERE T.id = $1;
+    WHERE T.id = $1 AND T.is_active = true;
   `;
   const { rows } = await pool.query(querySQL, [taskId]);
   if (rows.length === 0) {
-    // 没有找到这个任务
     return null;
   }
 
-  // 取第一行拿到任务和房产的基本信息
+  // 任务及房产基本信息在每一行均相同
   const first = rows[0];
-
   const task = {
     id: first.task_id,
     task_name: first.task_name,
     task_description: first.task_description,
     due_date: first.due_date,
     repeat_frequency: first.repeat_frequency,
+    status: first.status,
+    type: first.type,
     property_id: first.property_id,
-
-    // 房产信息
-    property_name: first.property_name,
     property_address: first.property_address,
-    property_agency_id: first.property_agency_id,
-
-    // 将在下面的循环中收集到
     contacts: [],
     emails: []
   };
 
-  // 使用Map来去重（key=contact_id / email_id）
+  // 使用 Map 去重
   const contactsMap = new Map();
   const emailsMap = new Map();
 
   for (const row of rows) {
-    // 收集联系人
-    if (row.contact_id) {
-      if (!contactsMap.has(row.contact_id)) {
-        contactsMap.set(row.contact_id, {
-          id: row.contact_id,
-          name: row.contact_name,
-          phone: row.contact_phone,
-          email: row.contact_email,
-        });
-      }
+    // 收集联系人（仅激活联系人）
+    if (row.contact_id && !contactsMap.has(row.contact_id)) {
+      contactsMap.set(row.contact_id, {
+        id: row.contact_id,
+        name: row.contact_name,
+        phone: row.contact_phone,
+        email: row.contact_email
+      });
     }
-
     // 收集邮件
-    if (row.email_id) {
-      if (!emailsMap.has(row.email_id)) {
-        emailsMap.set(row.email_id, {
-          id: row.email_id,
-          subject: row.email_subject,
-          sender: row.email_sender,
-          email_body: row.email_body,
-          html: row.html
-        });
-      }
+    if (row.email_id && !emailsMap.has(row.email_id)) {
+      emailsMap.set(row.email_id, {
+        id: row.email_id,
+        subject: row.email_subject,
+        sender: row.email_sender,
+        email_body: row.email_body,
+        html: row.html
+      });
     }
   }
 
-  // 转化为数组
   task.contacts = Array.from(contactsMap.values());
   task.emails = Array.from(emailsMap.values());
 
   return task;
 }
 
-
-
 /**
- * 查询所有任务（供 admin 使用），同时返回房产信息
- * @returns {Array} 任务数组，每条任务包含所属房产部分信息
+ * 列出任务
+ * 根据请求用户的角色返回不同范围的任务：
+ * - 若请求用户为 admin 或 superuser，返回所有激活的任务；
+ * - 否则，仅返回其所属机构下的任务（即房产所属机构与请求用户的 agency_id 匹配）
+ * 
+ * @param {Object} requestingUser - 请求用户对象，需包含 role 和（对于非 admin/superuser）agency_id
+ * @returns {Promise<Array>} 返回任务记录数组
  */
-async function getAllTasks() {
-  const querySQL = `
-    SELECT T.*, P.name as property_name, P.address as property_address, P.agency_id as property_agency_id
-    FROM "TASK" T
-    LEFT JOIN "PROPERTY" P ON T.property_id = P.id
-    ORDER BY T.id DESC;
-  `;
-  const { rows } = await pool.query(querySQL);
+async function listTasks(requestingUser) {
+  let querySQL = '';
+  let values = [];
+  if (requestingUser.role === 'admin' || requestingUser.role === 'superuser') {
+    querySQL = `
+      SELECT T.*, P.address as property_address
+      FROM "TASK" T
+      LEFT JOIN "PROPERTY" P ON T.property_id = P.id
+      WHERE T.is_active = true
+      ORDER BY T.id DESC;
+    `;
+  } else {
+    if (!requestingUser) {
+      throw new Error("Non-admin user must have an agency_id");
+    }
+    querySQL = `
+      SELECT T.*, P.address as property_address
+      FROM "TASK" T
+      LEFT JOIN "PROPERTY" P ON T.property_id = P.id
+      WHERE T.is_active = true AND P.user_id = $1
+      ORDER BY T.id DESC;
+    `;
+    values.push(requestingUser.id);
+  }
+  const { rows } = await pool.query(querySQL, values);
   return rows;
 }
 
 /**
- * 根据机构 ID 查询所有任务（供 agency 使用），返回任务记录同时附带房产信息
- * @param {number} agency_id 
- * @returns {Array} 任务数组
+ * 软删除任务
+ * 将指定任务的 is_active 字段设置为 false
+ * @param {number} taskId - 任务 ID
+ * @returns {Promise<Object>} 返回更新后的任务记录
  */
-async function getAllTasksByAgency(agency_id) {
-  const querySQL = `
-    SELECT T.*, P.name as property_name, P.address as property_address, P.agency_id as property_agency_id
-    FROM "TASK" T
-    JOIN "PROPERTY" P ON T.property_id = P.id
-    WHERE P.agency_id = $1
-    ORDER BY T.id DESC;
-  `;
-  const { rows } = await pool.query(querySQL, [agency_id]);
-  return rows;
-}
-
 async function deleteTask(taskId) {
-  const deleteSQL = `
-    DELETE FROM "TASK" WHERE id = $1;
+  const updateSQL = `
+    UPDATE "TASK"
+    SET is_active = false
+    WHERE id = $1
+    RETURNING *;
   `;
-  await pool.query(deleteSQL, [taskId]);
+  const { rows } = await pool.query(updateSQL, [taskId]);
+  return rows[0];
 }
 
+/**
+ * 更新任务信息
+ * 可更新字段包括：due_date, task_name, task_description, repeat_frequency
+ * @param {number} taskId - 任务 ID
+ * @param {Object} param1 - 包含要更新的字段
+ * @returns {Promise<Object>} 返回更新后的任务记录
+ */
 async function updateTask(taskId, { due_date, task_name, task_description, repeat_frequency }) {
   const updateSQL = `
     UPDATE "TASK"
@@ -177,8 +186,7 @@ async function updateTask(taskId, { due_date, task_name, task_description, repea
 module.exports = {
   createTask,
   getTaskById,
-  getAllTasks,
-  getAllTasksByAgency,
+  listTasks,
   deleteTask,
   updateTask,
 };

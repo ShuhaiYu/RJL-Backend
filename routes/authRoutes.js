@@ -2,25 +2,27 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
+const authMiddleware = require('../middlewares/authMiddleware');
 
-// POST /auth/login
+// Login
 router.post('/login', authController.login);
 
-// POST /auth/register
+// Register
 router.post('/register', authController.register);
 
-// POST /auth/refresh (获取新的access token)
-router.post('/refresh', authController.refreshToken);
+// Refresh token (get new access token)
+router.post('/refresh', authMiddleware.authenticateToken, authController.refreshToken);
 
-// POST /auth/forgot-password
+// Forgot password
 router.post('/forgot-password', authController.forgotPassword);
 
-// POST /auth/reset-password
+// Reset password
 router.post('/reset-password', authController.resetPassword);
 
-router.post('/user', authController.getCurrentUser);
+// Get current user info
+router.get('/me', authMiddleware.authenticateToken, authController.getCurrentUser);
 
-// 可选：登出接口
+// Logout
 router.post('/logout', authController.logout);
 
 module.exports = router;

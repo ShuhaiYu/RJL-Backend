@@ -3,67 +3,60 @@ require('dotenv').config();
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { getUserByEmail, getUserById, updateUserPassword, updateUserRefreshToken, getUserByRefreshToken, insertUser } = require('../models/userModel');
 
-let loginAttemptsMap = {}; // 锁定逻辑用内存计数示例
+const { 
+  getUserByEmail, 
+  getUserById, 
+  updateUser, 
+  createUser 
+} = require('../models/userModel');
+
+const { getUserPermissions } = require('../models/userPermissionModel'); // 从中间表查询权限
+
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'fallback_access_secret';
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret';
 const ACCESS_EXPIRES = process.env.JWT_ACCESS_EXPIRES || '15m';
 const REFRESH_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
 
 module.exports = {
-
-  // 1) 登录 -> 返回 { accessToken, refreshToken }
+  // 1) Login -> returns { accessToken, refreshToken }
   login: async (req, res, next) => {
     try {
       const { email, password } = req.body;
       const user = await getUserByEmail(email);
       if (!user) {
-        return res.status(401).json({ message: '用户不存在' });
+        return res.status(401).json({ message: 'User does not exist' });
       }
 
-      // 检查是否锁定
-      if (!user.is_actived) {
-        return res.status(403).json({ message: '账号已被锁定或未激活' });
+      // Check if account is active
+      if (!user.is_active) {
+        return res.status(403).json({ message: 'Account has been locked or is inactive' });
       }
 
-      // 简单计数锁定示例
-      if (!loginAttemptsMap[email]) {
-        loginAttemptsMap[email] = 0;
-      }
-      if (loginAttemptsMap[email] >= 3) {
-        return res.status(403).json({ message: '账号已被锁定，请联系管理员或重置密码' });
-      }
-
-      // 验证密码
+      // Validate password
       const match = await bcrypt.compare(password, user.password);
       if (!match) {
-        loginAttemptsMap[email] += 1;
-        return res.status(401).json({ message: '密码错误' });
+        return res.status(401).json({ message: 'Incorrect password' });
       }
 
-      // 登录成功
-      loginAttemptsMap[email] = 0;
+      // Retrieve user's permissions and include them in the token payload
+      const permissions = await getUserPermissions(user.id);
+      const accessPayload = {
+        user_id: user.id,
+        role: user.role,
+        permissions: permissions // e.g. [{ permission_value: 'create', permission_scope: 'user' }, ...]
+      };
+      const accessToken = jwt.sign(accessPayload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES });
 
-      // 生成短期 Access Token
-      const accessToken = jwt.sign(
-        { userId: user.id, role: user.role },
-        ACCESS_SECRET,
-        { expiresIn: ACCESS_EXPIRES }
-      );
+      // Generate refresh token (without permissions)
+      const refreshPayload = { user_id: user.id, role: user.role };
+      const refreshToken = jwt.sign(refreshPayload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
 
-      // 生成长期 Refresh Token
-      const refreshToken = jwt.sign(
-        { userId: user.id, role: user.role },
-        REFRESH_SECRET,
-        { expiresIn: REFRESH_EXPIRES }
-      );
-
-      // 将 refreshToken 写到数据库 (USER 表)
-      await updateUserRefreshToken(user.id, refreshToken);
+      // Update refresh token in the user record using updateUser
+      await updateUser(user.id, { refresh_token: refreshToken });
 
       return res.status(200).json({
-        message: '登录成功',
+        message: 'Login successful',
         accessToken,
         refreshToken,
         role: user.role,
@@ -74,31 +67,32 @@ module.exports = {
     }
   },
 
+  // 2) Register a new user
   register: async (req, res, next) => {
     try {
-      const { email, password } = req.body;
-
-      // 检查是否已存在该邮箱
+      const { email, password, name, role, agency_id } = req.body;
       const existingUser = await getUserByEmail(email);
       if (existingUser) {
-        return res.status(400).json({ message: '该邮箱已注册，请使用其他邮箱' });
+        return res.status(400).json({ message: 'This email is already registered, please use another email' });
       }
 
-      // 加密密码
+      // Hash the password
       const hashedPassword = await bcrypt.hash(password, 10);
+      // Use provided name or fallback to email
+      const finalName = name || email;
+      const userRole = role || 'user';
 
-      // 插入数据库
-      const newUser = await insertUser({
+      // Create user in the database
+      const newUser = await createUser({
         email,
-        // name,
+        name: finalName,
         password: hashedPassword,
-        // 可以让前端传 role，也可以在这里强制默认 role = 'agency' 或 'user'
-        role: role || 'user',
+        role: userRole,
+        agency_id: agency_id || null,
       });
 
-      // 成功响应
       return res.status(201).json({
-        message: '注册成功',
+        message: 'Registration successful',
         data: {
           id: newUser.id,
           email: newUser.email,
@@ -110,53 +104,51 @@ module.exports = {
     }
   },
 
-  // 2) 用 refreshToken 获取新的 accessToken
+  // 3) Refresh access token using refreshToken
   refreshToken: async (req, res, next) => {
     try {
       const { refreshToken } = req.body;
       if (!refreshToken) {
-        return res.status(400).json({ message: '缺少 refreshToken' });
+        return res.status(400).json({ message: 'Missing refreshToken' });
       }
 
-      // 在数据库里根据 refreshToken 找到用户
-      const user = await getUserByRefreshToken(refreshToken);
-      if (!user) {
-        return res.status(403).json({ message: '无效的 refreshToken' });
-      }
-
-      // 验证 refreshToken 是否过期/被篡改
+      // Verify refresh token and retrieve payload
       let payload;
       try {
         payload = jwt.verify(refreshToken, REFRESH_SECRET);
       } catch (err) {
-        return res.status(403).json({ message: 'refreshToken 已过期或不合法' });
+        return res.status(403).json({ message: 'Refresh token expired or invalid' });
       }
 
-      // 生成新的 Access Token
-      const newAccessToken = jwt.sign(
-        { userId: user.id, role: user.role },
-        ACCESS_SECRET,
-        { expiresIn: ACCESS_EXPIRES }
-      );
+      // Retrieve user by user_id from token payload
+      const user = await getUserById(payload.user_id);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
 
-      // 一般可以选择是否“滚动刷新”，即再生成新的 refreshToken 并更新数据库。
-      // 如果想让 refreshToken 不变，可保持原样。如果想滚动刷新，则：
-      // const newRefreshToken = jwt.sign(...);
-      // await updateUserRefreshToken(user.id, newRefreshToken);
-      // 并把 newRefreshToken 返回给客户端。
+      // Optional: check if stored refresh_token matches the provided one
+      if (user.refresh_token !== refreshToken) {
+        return res.status(403).json({ message: 'Invalid refresh token' });
+      }
+
+      // Retrieve permissions and generate a new access token
+      const permissions = await getUserPermissions(user.id);
+      const newAccessPayload = {
+        user_id: user.id,
+        role: user.role,
+        permissions: permissions,
+      };
+      const newAccessToken = jwt.sign(newAccessPayload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES });
 
       return res.status(200).json({
-        access_token: newAccessToken,
+        accessToken: newAccessToken,
       });
     } catch (err) {
       next(err);
     }
   },
 
-  /**
-   * POST /auth/forgot-password
-   * @param {string} req.body.email - 用户的邮箱
-   */
+  // 4) Forgot password - send password reset link via email
   forgotPassword: async (req, res, next) => {
     try {
       const { email } = req.body;
@@ -164,21 +156,20 @@ module.exports = {
         return res.status(400).json({ message: 'Email is required' });
       }
 
-      // 1. 查找用户
+      // Find user by email
       const user = await getUserByEmail(email);
       if (!user) {
-        return res.status(404).json({ message: '用户不存在' });
+        return res.status(404).json({ message: 'User not found' });
       }
 
-      // 2. 生成 15 分钟有效期的token
-      //    注意：这里直接把 userId、email 放进 token
+      // Generate a reset token valid for 15 minutes
       const resetToken = jwt.sign(
-        { userId: user.id, email: email },
+        { user_id: user.id, email: email },
         ACCESS_SECRET,
         { expiresIn: '15m' }
       );
 
-      // 3. 发送邮件
+      // Create transporter using Gmail (adjust as needed)
       const transporter = nodemailer.createTransport({
         service: 'Gmail',
         auth: {
@@ -187,131 +178,114 @@ module.exports = {
         },
       });
 
-      // 前端的重置链接（示例: localhost:3000）
-      // 注意加上 email & token，这样前端能获取并发送到后端
-      const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password/change?token=${resetToken}&email=${encodeURIComponent(
-        email
-      )}`;
+      // Construct reset URL (adjust FRONTEND_URL as needed)
+      const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password/change?token=${resetToken}&email=${encodeURIComponent(email)}`;
 
       const mailOptions = {
         from: process.env.GMAIL_USER,
         to: email,
         subject: 'Reset Your Password',
         html: `
-          <p>您好，</p>
-          <p>您收到这封邮件是因为您请求了找回密码。请点击以下链接以重置密码（15 分钟内有效）：</p>
+          <p>Hello,</p>
+          <p>You have requested a password reset. Please click the link below to reset your password (valid for 15 minutes):</p>
           <p><a href="${resetUrl}" target="_blank">${resetUrl}</a></p>
-          <p>如果您没有请求此操作，请忽略此邮件。</p>
+          <p>If you did not request this, please ignore this email.</p>
         `,
       };
 
       await transporter.sendMail(mailOptions);
 
-      // 4. 返回前端
-      return res
-        .status(200)
-        .json({ message: '已发送重置链接到邮箱', resetToken });
+      return res.status(200).json({ message: 'Reset link sent to email', resetToken });
     } catch (err) {
       next(err);
     }
   },
 
-  /**
-   * POST /auth/reset-password
-   * @param {string} req.body.email - 用户邮箱
-   * @param {string} req.body.token - 重置token
-   * @param {string} req.body.password - 新密码
-   * @param {string} req.body.password_confirmation - 确认密码
-   */
+  // 5) Reset password
   resetPassword: async (req, res, next) => {
     try {
       const { email, token, password, password_confirmation } = req.body;
       if (!email || !token || !password || !password_confirmation) {
-        return res
-          .status(400)
-          .json({ message: 'email, token, password, password_confirmation are required' });
+        return res.status(400).json({ message: 'Email, token, password, and password confirmation are required' });
       }
       if (password !== password_confirmation) {
-        return res.status(400).json({ message: '两次密码不一致' });
+        return res.status(400).json({ message: 'Passwords do not match' });
       }
 
-      // 1. 验证 token 是否有效
+      // Verify the reset token
       let decoded;
       try {
         decoded = jwt.verify(token, ACCESS_SECRET);
       } catch (error) {
-        return res.status(401).json({ message: 'Token 已失效或不合法' });
+        return res.status(401).json({ message: 'Token expired or invalid' });
       }
 
-      // 2. 校验 token 中的 email / userId 与请求 body 中的一致
+      // Check if token email matches request email
       if (decoded.email !== email) {
-        return res.status(401).json({ message: 'Token 与当前用户不匹配' });
+        return res.status(401).json({ message: 'Token does not match the user' });
       }
 
-      // 3. 找到用户
+      // Find user by email
       const user = await getUserByEmail(email);
       if (!user) {
-        return res.status(404).json({ message: '用户不存在' });
+        return res.status(404).json({ message: 'User not found' });
       }
 
-      // 加密密码
+      // Hash new password and update user record using updateUser
       const hashedPassword = await bcrypt.hash(password, 10);
+      await updateUser(user.id, { password: hashedPassword });
 
-      // 4. 更新密码 (hash)
-      await updateUserPassword(user.id, hashedPassword);
-
-      // 5. 返回成功
-      return res.status(200).json({ message: '密码重置成功' });
+      return res.status(200).json({ message: 'Password reset successful' });
     } catch (err) {
       next(err);
     }
   },
 
-  // 5) 登出 / 撤销 refreshToken -> 将数据库里的 refresh_token 置空
+  // 6) Logout - revoke refresh token
   logout: async (req, res, next) => {
     try {
       const { refreshToken } = req.body;
       if (!refreshToken) {
-        return res.status(400).json({ message: '缺少 refreshToken' });
+        return res.status(400).json({ message: 'Missing refreshToken' });
       }
 
-      // 查到用户
-      const user = await getUserByRefreshToken(refreshToken);
+      // Verify refresh token to get user_id
+      let payload;
+      try {
+        payload = jwt.verify(refreshToken, REFRESH_SECRET);
+      } catch (err) {
+        return res.status(403).json({ message: 'Refresh token expired or invalid' });
+      }
+
+      // Retrieve user by id from token
+      const user = await getUserById(payload.user_id);
       if (!user) {
-        return res.status(403).json({ message: '无效的 refreshToken' });
+        return res.status(404).json({ message: 'User not found' });
       }
 
-      // 将 refreshToken 清空
-      await updateUserRefreshToken(user.id, null);
+      // Optional: check if stored refresh_token matches the provided one
+      if (user.refresh_token !== refreshToken) {
+        return res.status(403).json({ message: 'Invalid refresh token' });
+      }
 
-      return res.status(200).json({ message: '登出成功，Refresh Token 已作废' });
+      // Revoke refresh token by updating user record using updateUser
+      await updateUser(user.id, { refresh_token: null });
+
+      return res.status(200).json({ message: 'Logout successful, refresh token revoked' });
     } catch (err) {
       next(err);
     }
   },
 
+  // 7) Get current user information
   getCurrentUser: async (req, res, next) => {
-    try {      
-      // 直接从 req.user 中拿到 userId 与 role
-      const user = await getUserByEmail(req.body.email);
-      console.log('user:', user);
-      
+    try {
+      // Use user_id from token (populated by authenticateToken)
+      const user = await getUserById(req.user.user_id);
       if (!user) {
-        return res.status(404).json({ message: '用户不存在' });
+        return res.status(404).json({ message: 'User not found' });
       }
-      // 如果当前用户是 agency，则通过 agencyModel 获取机构数据
-      if (user.role === 'agency') {
-        // 调用 agencyModel 中的 getAgencyByUserId 方法
-        const { getAgencyByAgencyId } = require('../models/agencyModel');
-        const agencyInfo = await getAgencyByAgencyId(user.agency_id);
-        return res.status(200).json({
-          ...user,
-          agencyInfo, // 这里包含机构的详细信息
-        });
-      } else {
-        // 如果是 admin 或其他角色，直接返回用户信息
-        return res.status(200).json(user);
-      }
+      return res.status(200).json(user);
     } catch (err) {
       next(err);
     }

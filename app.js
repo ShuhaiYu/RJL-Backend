@@ -7,7 +7,9 @@ const app = express();
 
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-const agencyRoutes = require('./routes/agencyRoutes');
+const superuserRoutes = require('./routes/superuserRoutes');
+const agencyAdminRoutes = require('./routes/agencyAdminRoutes');
+const agencyUserRoutes = require('./routes/agencyUserRoutes');
 const { setupCronJobs } = require('./cron');
 
 // 解析 JSON 请求体
@@ -19,13 +21,15 @@ app.use(cors({
 
 // 路由
 app.use('/auth', authRoutes);
+app.use('/superuser', superuserRoutes);
 app.use('/admin', adminRoutes);
-app.use('/agency', agencyRoutes);
+app.use('/agency/admin', agencyAdminRoutes);
+app.use('/agency/user', agencyUserRoutes);
 
 // 错误处理
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(500).json({ message: '服务器错误', error: err.message });
+  res.status(500).json({ message: 'server error', error: err.message });
 });
 
 require('./emailListener'); // 启动邮件监听

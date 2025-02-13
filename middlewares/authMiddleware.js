@@ -1,10 +1,9 @@
 const jwt = require('jsonwebtoken');
-const { getPermissionsByRole } = require('../models/rolePermissionModel');
 
 const SECRET_KEY = process.env.JWT_ACCESS_SECRET;
 
 module.exports = {
-  // 基础鉴权
+  // 基础鉴权中间件：验证 token 并将 payload 存入 req.user
   authenticateToken: (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
@@ -13,69 +12,49 @@ module.exports = {
     const token = authHeader.split(' ')[1];
     try {
       const decoded = jwt.verify(token, SECRET_KEY);
-      req.user = decoded; // { userId, role, iat, exp }
+      // decoded 应该包含 permissions 字段，如：
+      // { user_id, role, permissions: [{ permission_value, permission_scope }, ...], iat, exp }
+      req.user = decoded;
       next();
     } catch (err) {
       return res.status(401).json({ message: '无效的 token' });
     }
   },
 
-  // 需要管理员角色
-  requireAdmin: async (req, res, next) => {
-    try {
-      // 先执行 authenticateToken
-      if (!req.user || req.user.role !== 'admin') {
-        return res.status(403).json({ message: '需要管理员权限' });
+  /**
+   * 通用权限校验中间件
+   * 要求用户必须拥有指定的权限，权限信息直接从 token 的 payload 中获取
+   *
+   * @param {string} requiredValue - 必须的权限值，例如 'create'
+   * @param {string} requiredScope - 必须的权限作用域，例如 'user'
+   * @returns {Function} Express 中间件函数
+   *
+   * 使用示例：
+   *   router.post('/users/create',
+   *     authenticateToken,
+   *     requirePermission('create', 'user'),
+   *     controller.createUser);
+   */
+  requirePermission: (requiredValue, requiredScope) => {
+    return (req, res, next) => {
+      if (!req.user) {
+        return res.status(403).json({ message: '未授权' });
       }
-      // 如果还需要进一步验证权限，可以查 role_permission
-      const permissions = await getPermissionsByRole(req.user.role);
-      if (!permissions || !permissions.read_agency) {
-        return res.status(403).json({ message: '管理员权限不足' });
+      const permissions = req.user.permissions;
+      if (!permissions || !Array.isArray(permissions)) {
+        return res.status(403).json({ message: 'Token 中缺少权限信息' });
       }
-
-      next();
-    } catch (err) {
-      next(err);
-    }
-  },
-
-  // 需要中介角色
-  requireAgency: async (req, res, next) => {
-    try {
-      // 先执行 authenticateToken
-      if (!req.user || req.user.role !== 'agency') {
-        return res.status(403).json({ message: '需要中介权限' });
-      }
-      // 如果还需要进一步验证权限
-      const permissions = await getPermissionsByRole(req.user.role);
-      if (!permissions || !permissions.create_property) {
-        return res.status(403).json({ message: '中介权限不足' });
-      }
-
-      next();
-    } catch (err) {
-      next(err);
-    }
-  },
-
-  // 允许 agency 或 admin 访问
-  requireAgencyOrAdmin: async (req, res, next) => {
-    try {
-      // 确保已经调用 authenticateToken
-      if (!req.user || (req.user.role !== 'agency' && req.user.role !== 'admin')) {
-        return res.status(403).json({ message: '需要中介或管理员权限' });
-      }
-      // 对于 agency 角色，可以进一步检查权限（例如创建房产权限）
-      if (req.user.role === 'agency') {
-        const permissions = await getPermissionsByRole(req.user.role);
-        if (!permissions || !permissions.create_property) {
-          return res.status(403).json({ message: '中介权限不足' });
-        }
+      const hasPermission = permissions.some(
+        (p) =>
+          p.permission_value === requiredValue &&
+          p.permission_scope === requiredScope
+      );
+      if (!hasPermission) {
+        return res
+          .status(403)
+          .json({ message: `缺少权限: ${requiredValue} ${requiredScope}` });
       }
       next();
-    } catch (err) {
-      next(err);
-    }
+    };
   },
-  
 };

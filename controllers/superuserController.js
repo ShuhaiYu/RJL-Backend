@@ -1,4 +1,4 @@
-// controllers/adminController.js
+// controllers/superuserController.js
 
 const userModel = require('../models/userModel');
 const agencyModel = require('../models/agencyModel');
@@ -7,11 +7,11 @@ const taskModel = require('../models/taskModel');
 const contactModel = require('../models/contactModel');
 
 module.exports = {
-  // ----- User Management (No deletion) -----
+  // ----- 用户管理 -----
   createUser: async (req, res, next) => {
     try {
       const { email, name, password, role, agency_id } = req.body;
-      const newUser = await userModel.createUser({ email, name, password, role, agency_id });
+      const newUser = await userModel.insertUser({ email, name, password, role, agency_id });
       res.status(201).json({ message: 'User created successfully', data: newUser });
     } catch (error) {
       next(error);
@@ -39,6 +39,16 @@ module.exports = {
     }
   },
 
+  deleteUser: async (req, res, next) => {
+    try {
+      const user_id = req.params.id;
+      const deletedUser = await userModel.deleteUser(user_id);
+      res.status(200).json({ message: 'User (soft) deleted successfully', data: deletedUser });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   listUsers: async (req, res, next) => {
     try {
       const users = await userModel.listUsers(req.user);
@@ -48,7 +58,7 @@ module.exports = {
     }
   },
 
-  // ----- Agency Management (No deletion) -----
+  // ----- 机构管理 -----
   createAgency: async (req, res, next) => {
     try {
       const { agency_name, address, phone, logo } = req.body;
@@ -80,6 +90,16 @@ module.exports = {
     }
   },
 
+  deleteAgency: async (req, res, next) => {
+    try {
+      const agencyId = req.params.id;
+      const deletedAgency = await agencyModel.deleteAgency(agencyId);
+      res.status(200).json({ message: 'Agency deleted successfully', data: deletedAgency });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   listAgencies: async (req, res, next) => {
     try {
       const agencies = await agencyModel.listAgencies();
@@ -89,7 +109,7 @@ module.exports = {
     }
   },
 
-  // ----- Property Management (No deletion) -----
+  // ----- 房产管理 -----
   createProperty: async (req, res, next) => {
     try {
       const { name, address, agency_id } = req.body;
@@ -121,17 +141,26 @@ module.exports = {
     }
   },
 
+  deleteProperty: async (req, res, next) => {
+    try {
+      const propertyId = req.params.id;
+      const deletedProperty = await propertyModel.deleteProperty(propertyId);
+      res.status(200).json({ message: 'Property deleted successfully', data: deletedProperty });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   listProperties: async (req, res, next) => {
     try {
-      const user = await userModel.getUserById(req.user.user_id);
-      const properties = await propertyModel.listProperties(user);
+      const properties = await propertyModel.getAllProperties();
       res.status(200).json(properties);
     } catch (error) {
       next(error);
     }
   },
 
-  // ----- Task Management (No deletion) -----
+  // ----- 任务管理 -----
   createTask: async (req, res, next) => {
     try {
       const { property_id, due_date, task_name, task_description, repeat_frequency } = req.body;
@@ -163,17 +192,26 @@ module.exports = {
     }
   },
 
+  deleteTask: async (req, res, next) => {
+    try {
+      const taskId = req.params.id;
+      const deletedTask = await taskModel.deleteTask(taskId);
+      res.status(200).json({ message: 'Task deleted successfully', data: deletedTask });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   listTasks: async (req, res, next) => {
     try {
-      const user = await userModel.getUserById(req.user.user_id);
-      const tasks = await taskModel.listTasks(user);
+      const tasks = await taskModel.getAllTasks();
       res.status(200).json(tasks);
     } catch (error) {
       next(error);
     }
   },
 
-  // ----- Contact Management (No deletion) -----
+  // ----- 联系人管理 -----
   createContact: async (req, res, next) => {
     try {
       const { name, phone, email, task_id } = req.body;
@@ -198,8 +236,18 @@ module.exports = {
   updateContact: async (req, res, next) => {
     try {
       const contactId = req.params.id;
-      const updatedContact = await contactModel.updateContact(contactId, req.body);
+      const updatedContact = await contactModel.updateContactDetail(contactId, req.body);
       res.status(200).json({ message: 'Contact updated successfully', data: updatedContact });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  deleteContact: async (req, res, next) => {
+    try {
+      const contactId = req.params.id;
+      const deletedContact = await contactModel.deleteContact(contactId);
+      res.status(200).json({ message: 'Contact deleted successfully', data: deletedContact });
     } catch (error) {
       next(error);
     }
@@ -214,5 +262,3 @@ module.exports = {
     }
   },
 };
-
-
