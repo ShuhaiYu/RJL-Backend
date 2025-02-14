@@ -255,24 +255,42 @@ async function deleteTask(taskId) {
  * @param {Object} param1 - 包含要更新的字段
  * @returns {Promise<Object>} 返回更新后的任务记录
  */
-async function updateTask(
-  taskId,
-  { due_date, task_name, task_description, repeat_frequency, type, status }
-) {
+async function updateTask(taskId, fields) {
+  // 1) 先获取数据库里旧记录
+  const existing = await getTaskById(taskId);
+  if (!existing) throw new Error('Task not found');
+
+  // 2) 合并：若 fields.xxx 不存在，就用 existing.xxx
+  const finalDueDate = fields.due_date ?? existing.due_date;
+  const finalTaskName = fields.task_name ?? existing.task_name;
+  const finalDescription = fields.task_description ?? existing.task_description;
+  const finalRepeat = fields.repeat_frequency ?? existing.repeat_frequency;
+  const finalType = fields.type ?? existing.type;
+  const finalStatus = fields.status ?? existing.status;
+
+  // 3) 构造 SQL
   const updateSQL = `
     UPDATE "TASK"
-    SET due_date = $1, task_name = $2, task_description = $3, repeat_frequency = $4, type = $6, status = $7
-    WHERE id = $5
+    SET 
+      due_date = $1,
+      task_name = $2,
+      task_description = $3,
+      repeat_frequency = $4,
+      type = $5,
+      status = $6
+    WHERE id = $7
     RETURNING *;
   `;
+
+  // 4) 执行更新
   const { rows } = await pool.query(updateSQL, [
-    due_date,
-    task_name,
-    task_description,
-    repeat_frequency,
+    finalDueDate,
+    finalTaskName,
+    finalDescription,
+    finalRepeat,
+    finalType,
+    finalStatus,
     taskId,
-    type,
-    status,
   ]);
   return rows[0];
 }
