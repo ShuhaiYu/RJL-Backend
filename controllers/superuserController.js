@@ -54,12 +54,10 @@ module.exports = {
     try {
       const user_id = req.params.id;
       const deletedUser = await userModel.deleteUser(user_id);
-      res
-        .status(200)
-        .json({
-          message: "User (soft) deleted successfully",
-          data: deletedUser,
-        });
+      res.status(200).json({
+        message: "User (soft) deleted successfully",
+        data: deletedUser,
+      });
     } catch (error) {
       next(error);
     }
@@ -172,12 +170,10 @@ module.exports = {
         propertyId,
         req.body
       );
-      res
-        .status(200)
-        .json({
-          message: "Property updated successfully",
-          data: updatedProperty,
-        });
+      res.status(200).json({
+        message: "Property updated successfully",
+        data: updatedProperty,
+      });
     } catch (error) {
       next(error);
     }
@@ -187,12 +183,10 @@ module.exports = {
     try {
       const propertyId = req.params.id;
       const deletedProperty = await propertyModel.deleteProperty(propertyId);
-      res
-        .status(200)
-        .json({
-          message: "Property deleted successfully",
-          data: deletedProperty,
-        });
+      res.status(200).json({
+        message: "Property deleted successfully",
+        data: deletedProperty,
+      });
     } catch (error) {
       next(error);
     }
@@ -276,6 +270,16 @@ module.exports = {
     }
   },
 
+  listTodayTasks: async (req, res, next) => {
+    try {
+      const user = await userModel.getUserById(req.user.user_id);
+      const tasks = await taskModel.listTodayTasks(user);
+      res.status(200).json(tasks);
+    } catch (error) {
+      next(error);
+    }
+  },
+
   // ----- 联系人管理 -----
   createContact: async (req, res, next) => {
     try {
@@ -313,12 +317,10 @@ module.exports = {
         contactId,
         req.body
       );
-      res
-        .status(200)
-        .json({
-          message: "Contact updated successfully",
-          data: updatedContact,
-        });
+      res.status(200).json({
+        message: "Contact updated successfully",
+        data: updatedContact,
+      });
     } catch (error) {
       next(error);
     }
@@ -328,12 +330,10 @@ module.exports = {
     try {
       const contactId = req.params.id;
       const deletedContact = await contactModel.deleteContact(contactId);
-      res
-        .status(200)
-        .json({
-          message: "Contact deleted successfully",
-          data: deletedContact,
-        });
+      res.status(200).json({
+        message: "Contact deleted successfully",
+        data: deletedContact,
+      });
     } catch (error) {
       next(error);
     }
@@ -446,7 +446,6 @@ module.exports = {
           task_description: taskDescription,
           type: "auto-generated",
           status: "unknown",
-
         });
 
         // 5.4 创建 Contact（联系人）

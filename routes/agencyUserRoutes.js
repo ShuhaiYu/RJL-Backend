@@ -14,6 +14,7 @@ router.put('/me', agencyUserController.updateMyUserDetail);
 // Task management (only tasks under the current agency)
 router.get('/tasks', agencyUserController.listMyTasks);
 router.post('/tasks/create', agencyUserController.createTask);
+router.get('/tasks/today', agencyUserController.listTodayTasks);
 router.get('/tasks/:id', agencyUserController.getTaskDetail);
 router.put('/tasks/:id', agencyUserController.updateTask);
 router.delete('/tasks/:id', agencyUserController.deleteTask);

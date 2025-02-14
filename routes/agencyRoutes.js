@@ -19,6 +19,7 @@ router.post('/properties/create', requireAgencyOrAdmin, agencyController.createP
 
 // 任务相关路由
 router.get('/tasks', agencyController.listTasks);
+router.get('/tasks/today', agencyController.listTodayTasks);
 router.get('/tasks/:id', agencyController.getTaskDetail);
 router.put('/tasks/:id', agencyController.updateTask);
 router.delete('/tasks/:id', agencyController.deleteTask);

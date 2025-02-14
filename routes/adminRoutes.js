@@ -27,6 +27,7 @@ router.put('/properties/:id', adminController.updateProperty);
 
 // Task management (no deletion)
 router.get('/tasks', adminController.listTasks);
+router.get('/tasks/today', adminController.listTodayTasks);
 router.get('/tasks/:id', adminController.getTaskDetail);
 router.post('/tasks/create', adminController.createTask);
 router.put('/tasks/:id', adminController.updateTask);

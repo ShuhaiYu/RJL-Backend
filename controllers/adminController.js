@@ -78,7 +78,7 @@ module.exports = {
         name: req.body.name,
         password: req.body.password,
         role: "agency-admin",
-        agency_id: newAgency.id
+        agency_id: newAgency.id,
       });
       newAgency.newUser = newUser;
       res
@@ -157,12 +157,10 @@ module.exports = {
         propertyId,
         req.body
       );
-      res
-        .status(200)
-        .json({
-          message: "Property updated successfully",
-          data: updatedProperty,
-        });
+      res.status(200).json({
+        message: "Property updated successfully",
+        data: updatedProperty,
+      });
     } catch (error) {
       next(error);
     }
@@ -178,7 +176,7 @@ module.exports = {
         const agency = await agencyModel.getAgencyByAgencyId(user.agency_id);
         properties[i].agency = agency;
       }
-      
+
       res.status(200).json(properties);
     } catch (error) {
       next(error);
@@ -243,6 +241,16 @@ module.exports = {
     }
   },
 
+  listTodayTasks: async (req, res, next) => {
+    try {
+      const user = await userModel.getUserById(req.user.user_id);
+      const tasks = await taskModel.listTodayTasks(user);
+      res.status(200).json(tasks);
+    } catch (error) {
+      next(error);
+    }
+  },
+
   // ----- Contact Management (No deletion) -----
   createContact: async (req, res, next) => {
     try {
@@ -280,12 +288,10 @@ module.exports = {
         contactId,
         req.body
       );
-      res
-        .status(200)
-        .json({
-          message: "Contact updated successfully",
-          data: updatedContact,
-        });
+      res.status(200).json({
+        message: "Contact updated successfully",
+        data: updatedContact,
+      });
     } catch (error) {
       next(error);
     }

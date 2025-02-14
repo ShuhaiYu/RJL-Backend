@@ -32,6 +32,7 @@ router.delete('/properties/:id', superuserController.deleteProperty);
 
 // Task management
 router.get('/tasks', superuserController.listTasks);
+router.get('/tasks/today', superuserController.listTodayTasks);
 router.get('/tasks/:id', superuserController.getTaskDetail);
 router.post('/tasks/create', superuserController.createTask);
 router.put('/tasks/:id', superuserController.updateTask);
