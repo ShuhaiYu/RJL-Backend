@@ -1,5 +1,7 @@
 // models/taskModel.js
-const pool = require('../config/db');
+const pool = require("../config/db");
+const dayjs = require("dayjs");
+const userModel = require("./userModel");
 
 /**
  * 创建任务（Task）
@@ -12,13 +14,29 @@ const pool = require('../config/db');
  * @param {string|null} [param0.repeat_frequency] - 重复频率（可选）
  * @returns {Promise<Object>} 新创建的任务记录
  */
-async function createTask({ property_id, due_date = null, task_name, task_description = null, repeat_frequency = null, type = null, status = null }) {
+async function createTask({
+  property_id,
+  due_date = null,
+  task_name,
+  task_description = null,
+  repeat_frequency = null,
+  type = null,
+  status = null,
+}) {
   const insertSQL = `
     INSERT INTO "TASK" (property_id, due_date, task_name, task_description, repeat_frequency, type, status, is_active)
     VALUES ($1, $2, $3, $4, $5, $6, $7, true)
     RETURNING *;
   `;
-  const values = [property_id, due_date, task_name, task_description, repeat_frequency, type, status];
+  const values = [
+    property_id,
+    due_date,
+    task_name,
+    task_description,
+    repeat_frequency,
+    type,
+    status,
+  ];
   const { rows } = await pool.query(insertSQL, values);
   return rows[0];
 }
@@ -76,7 +94,7 @@ async function getTaskById(taskId) {
     property_id: first.property_id,
     property_address: first.property_address,
     contacts: [],
-    emails: []
+    emails: [],
   };
 
   // 使用 Map 去重
@@ -90,7 +108,7 @@ async function getTaskById(taskId) {
         id: row.contact_id,
         name: row.contact_name,
         phone: row.contact_phone,
-        email: row.contact_email
+        email: row.contact_email,
       });
     }
     // 收集邮件
@@ -100,7 +118,7 @@ async function getTaskById(taskId) {
         subject: row.email_subject,
         sender: row.email_sender,
         email_body: row.email_body,
-        html: row.html
+        html: row.html,
       });
     }
   }
@@ -116,14 +134,14 @@ async function getTaskById(taskId) {
  * 根据请求用户的角色返回不同范围的任务：
  * - 若请求用户为 admin 或 superuser，返回所有激活的任务；
  * - 否则，仅返回其所属机构下的任务（即房产所属机构与请求用户的 agency_id 匹配）
- * 
+ *
  * @param {Object} requestingUser - 请求用户对象，需包含 role 和（对于非 admin/superuser）agency_id
  * @returns {Promise<Array>} 返回任务记录数组
  */
 async function listTasks(requestingUser) {
-  let querySQL = '';
+  let querySQL = "";
   let values = [];
-  if (requestingUser.role === 'admin' || requestingUser.role === 'superuser') {
+  if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
     querySQL = `
       SELECT T.*, P.address as property_address
       FROM "TASK" T
@@ -146,6 +164,71 @@ async function listTasks(requestingUser) {
   }
   const { rows } = await pool.query(querySQL, values);
   return rows;
+}
+
+async function listTodayTasks(requestingUser) {
+  // 2) 计算 today (只比较到日期级别)
+  //    你可以用 dayjs().format('YYYY-MM-DD') 或 new Date() + cast::date
+  const todayString = dayjs().format("YYYY-MM-DD");
+
+  let tasks = [];
+
+  if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
+    // ----- (A) admin / superuser => 返回所有今日到期的任务 -----
+    const sqlAdmin = `
+        SELECT t.*
+        FROM "TASK" t
+        WHERE t.is_active = true
+          AND to_char(t.due_date, 'YYYY-MM-DD') = $1
+        ORDER BY t.id DESC
+      `;
+    const { rows } = await pool.query(sqlAdmin, [todayString]);
+    tasks = rows;
+  } else if (requestingUser.role === "agency-admin") {
+    // ----- (B) agency-admin => 返回同机构下所有用户的今日任务 -----
+
+    // 1. 找到该 agency 下所有用户
+    const agencyUsers = await userModel.getUsersByAgencyId(
+      requestingUser.agency_id
+    );
+    if (!agencyUsers || agencyUsers.length === 0) {
+      return res.status(200).json([]);
+    }
+    // 2. 收集这些用户的 id
+    const userIds = agencyUsers.map((u) => u.id); // e.g [2,5,10,...]
+    // 3. 查 TASK where property_id in (select p.id from PROPERTY p where p.user_id in userIds)
+    const sqlAgencyAdmin = `
+        SELECT t.*
+        FROM "TASK" t
+        JOIN "PROPERTY" p ON t.property_id = p.id
+        WHERE t.is_active = true
+          AND to_char(t.due_date, 'YYYY-MM-DD') = $1
+          AND p.user_id = ANY($2::int[])
+        ORDER BY t.id DESC
+      `;
+    const { rows } = await pool.query(sqlAgencyAdmin, [todayString, userIds]);
+    tasks = rows;
+  } else {
+    // ----- (C) agency-user => 只返回自己 user_id 创建的 property 的今日任务 -----
+
+    const sqlAgencyUser = `
+        SELECT t.*
+        FROM "TASK" t
+        JOIN "PROPERTY" p ON t.property_id = p.id
+        WHERE t.is_active = true
+          AND to_char(t.due_date, 'YYYY-MM-DD') = $1
+          AND p.user_id = $2
+        ORDER BY t.id DESC
+      `;
+    const { rows } = await pool.query(sqlAgencyUser, [
+      todayString,
+      requestingUser.id,
+    ]);
+    tasks = rows;
+  }
+
+  // 3) 返回结果
+  return tasks;
 }
 
 /**
@@ -172,14 +255,25 @@ async function deleteTask(taskId) {
  * @param {Object} param1 - 包含要更新的字段
  * @returns {Promise<Object>} 返回更新后的任务记录
  */
-async function updateTask(taskId, { due_date, task_name, task_description, repeat_frequency, type, status }) {
+async function updateTask(
+  taskId,
+  { due_date, task_name, task_description, repeat_frequency, type, status }
+) {
   const updateSQL = `
     UPDATE "TASK"
     SET due_date = $1, task_name = $2, task_description = $3, repeat_frequency = $4, type = $6, status = $7
     WHERE id = $5
     RETURNING *;
   `;
-  const { rows } = await pool.query(updateSQL, [due_date, task_name, task_description, repeat_frequency, taskId, type, status]);
+  const { rows } = await pool.query(updateSQL, [
+    due_date,
+    task_name,
+    task_description,
+    repeat_frequency,
+    taskId,
+    type,
+    status,
+  ]);
   return rows[0];
 }
 
@@ -189,4 +283,5 @@ module.exports = {
   listTasks,
   deleteTask,
   updateTask,
+  listTodayTasks,
 };

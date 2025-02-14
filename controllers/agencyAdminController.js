@@ -173,6 +173,16 @@ module.exports = {
     }
   },
 
+  listTodayTasks: async (req, res, next) => {
+    try {
+      const user = await userModel.getUserById(req.user.user_id);
+      const tasks = await taskModel.listTodayTasks(user);
+      res.status(200).json(tasks);
+    } catch (error) {
+      next(error);
+    }
+  },
+
   getMyTaskDetail: async (req, res, next) => {
     try {
       const taskId = req.params.id;

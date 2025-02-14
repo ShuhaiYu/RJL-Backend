@@ -24,6 +24,7 @@ router.delete('/properties/:id', agencyAdminController.deleteProperty);
 
 // Task management (only for tasks under the current agency)
 router.get('/tasks', agencyAdminController.listMyTasks);
+router.get('/tasks/today', agencyAdminController.listTodayTasks);
 router.get('/tasks/:id', agencyAdminController.getMyTaskDetail);
 router.post('/tasks/create', agencyAdminController.createTask);
 router.put('/tasks/:id', agencyAdminController.updateTask);
