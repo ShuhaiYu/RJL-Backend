@@ -149,6 +149,20 @@ async function listTasks(requestingUser) {
       WHERE T.is_active = true
       ORDER BY T.id DESC;
     `;
+  } else if (requestingUser.role === "agency-admin") {
+    if (!requestingUser.agency_id) {
+      throw new Error("Agency user must have an agency_id");
+    }
+    querySQL = `
+      SELECT T.*, P.address as property_address
+      FROM "TASK" T
+      JOIN "PROPERTY" P ON T.property_id = P.id
+      JOIN "USER" U ON P.user_id = U.id
+      WHERE T.is_active = true
+        AND U.agency_id = $1
+      ORDER BY T.id DESC;
+    `;
+    values.push(requestingUser.agency_id);
   } else {
     if (!requestingUser) {
       throw new Error("Non-admin user must have an agency_id");
@@ -258,7 +272,7 @@ async function deleteTask(taskId) {
 async function updateTask(taskId, fields) {
   // 1) 先获取数据库里旧记录
   const existing = await getTaskById(taskId);
-  if (!existing) throw new Error('Task not found');
+  if (!existing) throw new Error("Task not found");
 
   // 2) 合并：若 fields.xxx 不存在，就用 existing.xxx
   const finalDueDate = fields.due_date ?? existing.due_date;
