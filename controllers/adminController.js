@@ -172,6 +172,13 @@ module.exports = {
     try {
       const user = await userModel.getUserById(req.user.user_id);
       const properties = await propertyModel.listProperties(user);
+      // add agency data
+      for (let i = 0; i < properties.length; i++) {
+        const user = await userModel.getUserById(properties[i].user_id);
+        const agency = await agencyModel.getAgencyByAgencyId(user.agency_id);
+        properties[i].agency = agency;
+      }
+      
       res.status(200).json(properties);
     } catch (error) {
       next(error);

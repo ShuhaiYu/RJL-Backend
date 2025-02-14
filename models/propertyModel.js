@@ -1,6 +1,7 @@
 // models/propertyModel.js
 
 const pool = require("../config/db");
+const userModel = require("./userModel");
 
 /**
  * 创建房产（Property）
@@ -107,12 +108,23 @@ async function listProperties(requestingUser) {
       WHERE is_active = true
       ORDER BY id DESC;
     `;
+  } else if (requestingUser.role === 'agency-admin') {
+    const agencyUsers = await userModel.getUsersByAgencyId(requestingUser.agency_id);
+    const userIds = agencyUsers.map((u) => u.id);
+    querySQL = `
+      SELECT *
+      FROM "PROPERTY"
+      WHERE is_active = true
+        AND user_id = ANY($1::int[])
+      ORDER BY id DESC
+    `;
+    values.push(userIds);
   } else {
     // 非 admin/superuser用户：返回所属机构的房产
     querySQL = `
-      SELECT * FROM "PROPERTY"
-      WHERE is_active = true AND user_id = $1
-      ORDER BY id DESC;
+    SELECT * FROM "PROPERTY"
+    WHERE is_active = true AND user_id = $1
+    ORDER BY id DESC;
     `;
     values.push(requestingUser.id);
   }

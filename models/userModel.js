@@ -190,6 +190,17 @@ async function getUserByEmail(email) {
   }
 }
 
+async function getUsersByAgencyId(agencyId) {
+  const query = `SELECT * FROM "USER" WHERE agency_id = $1;`;
+  try {
+    const { rows } = await pool.query(query, [agencyId]);
+    return rows;
+  } catch (error) {
+    console.error('Error in getUsersByAgencyId:', error);
+    throw error;
+  }
+}
+
 
 module.exports = {
   createUser,
@@ -198,4 +209,5 @@ module.exports = {
   deleteUser,
   listUsers,
   getUserByEmail,
+  getUsersByAgencyId,
 };
