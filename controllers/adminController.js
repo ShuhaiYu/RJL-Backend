@@ -193,6 +193,9 @@ module.exports = {
         task_name,
         task_description,
         repeat_frequency,
+        status,
+        type,
+        email_id,
       } = req.body;
       const newTask = await taskModel.createTask({
         property_id,
@@ -200,6 +203,9 @@ module.exports = {
         task_name,
         task_description,
         repeat_frequency,
+        status,
+        type,
+        email_id,
       });
       res
         .status(201)

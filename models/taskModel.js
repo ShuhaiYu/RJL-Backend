@@ -22,10 +22,11 @@ async function createTask({
   repeat_frequency = null,
   type = null,
   status = null,
+  email_id = null,
 }) {
   const insertSQL = `
-    INSERT INTO "TASK" (property_id, due_date, task_name, task_description, repeat_frequency, type, status, is_active)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+    INSERT INTO "TASK" (property_id, due_date, task_name, task_description, repeat_frequency, type, status, email_id, is_active)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
     RETURNING *;
   `;
   const values = [
@@ -36,6 +37,7 @@ async function createTask({
     repeat_frequency,
     type,
     status,
+    email_id,
   ];
   const { rows } = await pool.query(insertSQL, values);
   return rows[0];
@@ -56,7 +58,8 @@ async function getTaskById(taskId) {
       T.repeat_frequency,
       T.property_id,
       T.status,
-      t.type,
+      T.type,
+      T.email_id,
       
       P.address as property_address,
       
@@ -94,7 +97,8 @@ async function getTaskById(taskId) {
     property_id: first.property_id,
     property_address: first.property_address,
     contacts: [],
-    emails: [],
+    email: [],
+    email_id: first.email_id,
   };
 
   // 使用 Map 去重
