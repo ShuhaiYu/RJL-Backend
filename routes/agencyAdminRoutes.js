@@ -30,4 +30,7 @@ router.post('/tasks/create', agencyAdminController.createTask);
 router.put('/tasks/:id', agencyAdminController.updateTask);
 router.delete('/tasks/:id', agencyAdminController.deleteTask);
 
+// Emails management (only for emails under the current agency)
+router.get('/emails', agencyAdminController.listEmails);
+
 module.exports = router;

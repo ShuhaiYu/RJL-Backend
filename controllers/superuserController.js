@@ -404,17 +404,6 @@ module.exports = {
       const createdList = [];
 
       for (const address of uniqueAddresses) {
-        // 5.1 检查是否已存在
-        const existingProperty = await propertyModel.getPropertyByAddress(
-          address
-        );
-        if (existingProperty.length > 0) {
-          console.log(
-            `Property already exists for address: ${address}. Skip creation.`
-          );
-          continue;
-        }
-
         // 新增：根据 contactEmail 在 user 表查找 userId
         let userId = null;
         if (contactEmail && contactEmail !== "N/A") {
@@ -424,14 +413,25 @@ module.exports = {
           }
         }
 
-        // 5.2 创建 Property
-        // 注：此时 propertyModel 里应支持 createProperty({address, user_id})
-        const newProperty = await propertyModel.createProperty({
-          address,
-          user_id: userId, // 如果没找到就是 null
-        });
+        // 检查该地址对应的房产是否存在
+        let property;
+        const existingProperty = await propertyModel.getPropertyByAddress(
+          address
+        );
+        if (existingProperty && existingProperty.length > 0) {
+          console.log(
+            `Property already exists for address: ${address}. Creating task under existing property.`
+          );
+          property = existingProperty[0];
+        } else {
+          // 房产不存在则创建新的房产
+          property = await propertyModel.createProperty({
+            address,
+            user_id: userId, // 如果没找到就是 null
+          });
+        }
 
-        // 5.3 创建 Task（示例：如果正文包含关键词 "safety check"）
+        // 创建 Task（示例：如果正文包含关键词 "safety check"）
         let taskName = "Auto-Generated Task";
         let taskDescription = "No recognized task from email.";
         if (textBody.toLowerCase().includes("safety check")) {
@@ -440,7 +440,7 @@ module.exports = {
         }
 
         const newTask = await taskModel.createTask({
-          property_id: newProperty.id,
+          property_id: property.id,
           due_date: null,
           task_name: taskName,
           task_description: taskDescription,
@@ -448,7 +448,7 @@ module.exports = {
           status: "unknown",
         });
 
-        // 5.4 创建 Contact（联系人）
+        // 创建 Contact（联系人）
         const newContact = await contactModel.createContact({
           name: contactName,
           phone: contactPhone,
@@ -456,19 +456,19 @@ module.exports = {
           task_id: newTask.id,
         });
 
-        // 5.5 保存邮件到 Email 表
+        // 保存邮件到 Email 表
         const newEmail = await emailModel.createEmailRecord({
           subject: subject || "No Subject",
           sender: from || "Unknown Sender",
           email_body: textBody || "No Content",
           html: htmlBody || "",
           task_id: newTask.id,
-          property_id: newProperty.id,
+          property_id: property.id,
         });
 
-        // 5.6 记录结果
+        // 记录结果
         createdList.push({
-          propertyId: newProperty.id,
+          propertyId: property.id,
           taskId: newTask.id,
           contactId: newContact.id,
           emailId: newEmail.id,

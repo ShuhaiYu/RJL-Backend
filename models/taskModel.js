@@ -190,8 +190,9 @@ async function listTodayTasks(requestingUser) {
   if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
     // ----- (A) admin / superuser => 返回所有今日到期的任务 -----
     const sqlAdmin = `
-        SELECT t.*
+        SELECT t.*, p.address as property_address
         FROM "TASK" t
+        JOIN "PROPERTY" p ON t.property_id = p.id
         WHERE t.is_active = true
           AND to_char(t.due_date, 'YYYY-MM-DD') = $1
         ORDER BY t.id DESC
@@ -212,7 +213,7 @@ async function listTodayTasks(requestingUser) {
     const userIds = agencyUsers.map((u) => u.id); // e.g [2,5,10,...]
     // 3. 查 TASK where property_id in (select p.id from PROPERTY p where p.user_id in userIds)
     const sqlAgencyAdmin = `
-        SELECT t.*
+        SELECT t.*, p.address as property_address
         FROM "TASK" t
         JOIN "PROPERTY" p ON t.property_id = p.id
         WHERE t.is_active = true

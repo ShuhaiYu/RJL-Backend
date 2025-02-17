@@ -4,7 +4,7 @@ const userModel = require("../models/userModel");
 const agencyModel = require("../models/agencyModel");
 const propertyModel = require("../models/propertyModel");
 const taskModel = require("../models/taskModel");
-const { get } = require("../routes/adminRoutes");
+const emailModel = require("../models/emailModel");
 
 module.exports = {
   // ----- 自己（用户）信息管理 -----
@@ -262,6 +262,18 @@ module.exports = {
         .status(200)
         .json({ message: "Task deleted successfully", data: deletedTask });
     } catch (error) {
+      next(error);
+    }
+  },
+
+  // ----- 邮件管理 -----
+  listEmails: async (req, res, next) => {
+    try {
+      // 1) 从数据库中获取所有邮件
+      const emails = await emailModel.listEmails();
+      res.status(200).json(emails);
+    }
+    catch (error) {
       next(error);
     }
   },
