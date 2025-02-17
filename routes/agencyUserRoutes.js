@@ -19,4 +19,7 @@ router.get('/tasks/:id', agencyUserController.getTaskDetail);
 router.put('/tasks/:id', agencyUserController.updateTask);
 router.delete('/tasks/:id', agencyUserController.deleteTask);
 
+// Contact management (only contacts under the current agency)
+router.get('/emails', agencyUserController.listEmails);
+
 module.exports = router;

@@ -38,4 +38,7 @@ router.get('/contacts/:id', adminController.getContactDetail);
 router.post('/contacts/create', adminController.createContact);
 router.put('/contacts/:id', adminController.updateContact);
 
+// Email management (no deletion)
+router.get('/emails', adminController.listEmails);
+
 module.exports = router;

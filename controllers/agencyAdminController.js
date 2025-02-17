@@ -269,8 +269,9 @@ module.exports = {
   // ----- 邮件管理 -----
   listEmails: async (req, res, next) => {
     try {
-      // 1) 从数据库中获取所有邮件
-      const emails = await emailModel.listEmails();
+      const user = await userModel.getUserById(req.user.user_id);
+      // 从数据库中获取所有邮件
+      const emails = await emailModel.listEmails(user);
       res.status(200).json(emails);
     }
     catch (error) {

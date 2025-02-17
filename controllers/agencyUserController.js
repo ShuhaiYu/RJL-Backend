@@ -3,6 +3,8 @@
 const userModel = require("../models/userModel");
 const propertyModel = require("../models/propertyModel");
 const taskModel = require("../models/taskModel");
+const emailModel = require("../models/emailModel");
+
 
 module.exports = {
   // ----- 自己（用户）信息管理 -----
@@ -144,4 +146,17 @@ module.exports = {
       next(error);
     }
   },
+
+  // ----- 邮件管理 -----
+    listEmails: async (req, res, next) => {
+      try {
+        const user = await userModel.getUserById(req.user.user_id);
+        // 从数据库中获取所有邮件
+        const emails = await emailModel.listEmails(user);
+        res.status(200).json(emails);
+      }
+      catch (error) {
+        next(error);
+      }
+    },
 };

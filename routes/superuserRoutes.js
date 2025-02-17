@@ -45,4 +45,7 @@ router.post('/contacts/create', superuserController.createContact);
 router.put('/contacts/:id', superuserController.updateContact);
 router.delete('/contacts/:id', superuserController.deleteContact);
 
+// Email management
+router.get('/emails', superuserController.listEmails);
+
 module.exports = router;
