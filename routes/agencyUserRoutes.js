@@ -7,9 +7,9 @@ const agencyUserController = require('../controllers/agencyUserController');
 // All endpoints require token authentication
 router.use(authMiddleware.authenticateToken);
 
-// Personal user information management
-router.get('/me', agencyUserController.getMyUserDetail);
-router.put('/me', agencyUserController.updateMyUserDetail);
+// Property management (only properties of the current agency)
+router.get('/properties', agencyUserController.listMyProperties);
+
 
 // Task management (only tasks under the current agency)
 router.get('/tasks', agencyUserController.listMyTasks);

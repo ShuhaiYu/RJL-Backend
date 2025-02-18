@@ -11,7 +11,7 @@ const {
   createUser,
 } = require("../models/userModel");
 
-const { getUserPermissions } = require("../models/userPermissionModel"); // 从中间表查询权限
+const { getUserPermissions, createUserPermission } = require("../models/userPermissionModel"); // 从中间表查询权限
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "fallback_access_secret";
 const REFRESH_SECRET =
@@ -80,12 +80,9 @@ module.exports = {
       const { email, password, name, role, agency_id } = req.body;
       const existingUser = await getUserByEmail(email);
       if (existingUser) {
-        return res
-          .status(400)
-          .json({
-            message:
-              "This email is already registered, please use another email",
-          });
+        return res.status(400).json({
+          message: "This email is already registered, please use another email",
+        });
       }
 
       // Hash the password
@@ -102,6 +99,58 @@ module.exports = {
         role: userRole,
         agency_id: agency_id || null,
       });
+
+      let permissionIds = [];
+      switch (userRole) {
+        case "agency-admin":
+          // agency-admin 用户权限：
+          // user: create (1), read (2), update (3)
+          // agency: read (6), update (7)
+          // property: create (9), read (10), update (11)
+          // task: create (13), read (14), update (15)
+          // contact: create (17), read (18), update (19)
+          permissionIds = [1, 2, 3, 6, 7, 9, 10, 11, 13, 14, 15, 17, 18, 19];
+          break;
+        case "agency-user":
+          // agency-user 用户权限：
+          // user: read (2)
+          // agency: read (6)
+          // property: read (10), update (11)
+          // task: read (14), update (15)
+          // contact: read (18), update (19)
+          permissionIds = [2, 6, 10, 11, 14, 15, 18, 19];
+          break;
+        case "admin":
+          // admin 用户权限：拥有所有权限（假设管理员可以操作所有模块）
+          permissionIds = [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+            20, 21, 22, 23, 24,
+          ];
+          break;
+        case "superuser":
+          // superuser 用户权限：同 admin
+          permissionIds = [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+            20, 21, 22, 23, 24,
+          ];
+          break;
+        default:
+          // 普通用户（user）：只赋予只读权限
+          // user: read (2)
+          // agency: read (6)
+          // property: read (10)
+          // task: read (14)
+          // contact: read (18)
+          permissionIds = [2, 6, 10, 14, 18];
+          break;
+      }
+
+      // 为新用户分配对应权限
+      await Promise.all(
+        permissionIds.map((permissionId) =>
+          createUserPermission(newUser.id, permissionId)
+        )
+      );
 
       return res.status(201).json({
         message: "Registration successful",
@@ -228,12 +277,10 @@ module.exports = {
     try {
       const { email, token, password, password_confirmation } = req.body;
       if (!email || !token || !password || !password_confirmation) {
-        return res
-          .status(400)
-          .json({
-            message:
-              "Email, token, password, and password confirmation are required",
-          });
+        return res.status(400).json({
+          message:
+            "Email, token, password, and password confirmation are required",
+        });
       }
       if (password !== password_confirmation) {
         return res.status(400).json({ message: "Passwords do not match" });

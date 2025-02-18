@@ -30,13 +30,30 @@ module.exports = {
     }
   },
 
+  // ----- 房产管理（仅操作本机构房产） -----
+  listMyProperties: async (req, res, next) => {
+      try {
+        const user = await userModel.getUserById(req.user.user_id);
+        const properties = await propertyModel.listProperties(user);
+        // add agency data
+        for (let i = 0; i < properties.length; i++) {
+          const user = await userModel.getUserById(properties[i].user_id);
+          const agency = await agencyModel.getAgencyByAgencyId(user.agency_id);
+          properties[i].agency = agency;
+        }
+        res.status(200).json(properties);
+      } catch (error) {
+        next(error);
+      }
+    },
+
   // ----- 任务管理（仅操作本机构任务） -----
   listMyTasks: async (req, res, next) => {
     try {
       const user = await userModel.getUserById(req.user.user_id);
       if (!user || !user.agency_id)
         return res.status(403).json({ message: "No associated agency" });
-      const tasks = await taskModel.getAllTasksByAgency(user.agency_id);
+      const tasks = await taskModel.listTasks(user);
       res.status(200).json(tasks);
     } catch (error) {
       next(error);

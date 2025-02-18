@@ -19,6 +19,17 @@ module.exports = {
         role,
         agency_id,
       });
+      // 为新用户分配权限（admin 新建的 agency-admin 用户权限）
+      // 权限列表：agency (read:6, update:7), user (create:1, read:2, update:3),
+      // property (create:9, read:10, update:11), task (create:13, read:14, update:15),
+      // contact (create:17, read:18, update:19)
+      const permissionIds = [6, 7, 1, 2, 3, 9, 10, 11, 13, 14, 15, 17, 18, 19];
+      await Promise.all(
+        permissionIds.map((permissionId) =>
+          userModel.createUserPermission(newUser.id, permissionId)
+        )
+      );
+      
       res
         .status(201)
         .json({ message: "User created successfully", data: newUser });

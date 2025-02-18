@@ -20,6 +20,8 @@ module.exports = {
         role,
         agency_id,
       });
+      
+
       res
         .status(201)
         .json({ message: "User created successfully", data: newUser });

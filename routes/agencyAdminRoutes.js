@@ -8,8 +8,8 @@ const agencyAdminController = require('../controllers/agencyAdminController');
 router.use(authMiddleware.authenticateToken);
 
 // Personal user information management
-router.get('/me', agencyAdminController.getMyUserDetail);
-router.put('/me', agencyAdminController.updateMyUserDetail);
+router.post('/users/create', agencyAdminController.createUser);
+
 
 // Agency information management
 router.get('/agency', agencyAdminController.getMyAgencyDetail);

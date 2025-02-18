@@ -30,6 +30,45 @@ module.exports = {
     }
   },
 
+  createUser: async (req, res, next) => {
+    try {
+      const { email, name, password, role, agency_id } = req.body;
+      
+      // 仅允许创建 agency-user 用户
+      if (role !== 'agency-user') {
+        return res
+          .status(400)
+          .json({ message: 'Agency admin can only create agency-user users.' });
+      }
+      
+      // 假设当前登录的 agency-admin 用户信息在 req.user 中，
+      // 且其所属机构 agency_id 必须与新建用户的 agency_id 相同
+      const currentAgencyId = req.user.agency_id;
+      if (agency_id !== currentAgencyId) {
+        return res.status(400).json({
+          message: 'Agency admin can only create users within their own agency.',
+        });
+      }
+      
+      // 创建新用户（同样注意密码加密）
+      const newUser = await userModel.createUser({
+        email,
+        name,
+        password,
+        role,
+        agency_id,
+      });
+
+      
+
+      res
+        .status(201)
+        .json({ message: 'User created successfully', data: newUser });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   // ----- 自己所属机构管理 -----
   getMyAgencyDetail: async (req, res, next) => {
     try {
