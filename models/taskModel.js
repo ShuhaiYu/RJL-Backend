@@ -75,7 +75,7 @@ async function getTaskById(taskId) {
       E.html
     FROM "TASK" T
     LEFT JOIN "PROPERTY" P ON T.property_id = P.id
-    LEFT JOIN "CONTACT" C ON C.task_id = T.id AND C.is_active = true
+    LEFT JOIN "CONTACT" C ON C.property_id = P.id AND C.is_active = true
     LEFT JOIN "EMAIL" E ON E.id = T.email_id
     WHERE T.id = $1 AND T.is_active = true;
   `;

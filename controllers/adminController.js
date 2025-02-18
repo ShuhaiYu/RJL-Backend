@@ -263,12 +263,13 @@ module.exports = {
   // ----- Contact Management (No deletion) -----
   createContact: async (req, res, next) => {
     try {
-      const { name, phone, email, task_id } = req.body;
+      const { name, phone, email, property_id } = req.body;
       const newContact = await contactModel.createContact({
         name,
         phone,
         email,
-        task_id,
+        // task_id,
+        property_id,
       });
       res
         .status(201)

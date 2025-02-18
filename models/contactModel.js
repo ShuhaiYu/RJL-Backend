@@ -13,12 +13,12 @@ const pool = require("../config/db");
  * @param {number} param0.task_id - 关联的任务 ID
  * @returns {Promise<Object>} 返回新创建的联系人记录
  */
-async function createContact({ name, phone, email, task_id }) {
+async function createContact({ name, phone, email, property_id }) {
   try {
     await pool.query("BEGIN");
 
     const insertContactSQL = `
-      INSERT INTO "CONTACT" (name, phone, email, task_id, is_active)
+      INSERT INTO "CONTACT" (name, phone, email, property_id, is_active)
       VALUES ($1, $2, $3, $4, true)
       RETURNING *;
     `;
@@ -26,7 +26,7 @@ async function createContact({ name, phone, email, task_id }) {
       name,
       phone,
       email,
-      task_id,
+      property_id,
     ]);
     const contact = contactRows[0];
 
