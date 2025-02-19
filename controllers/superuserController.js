@@ -148,11 +148,10 @@ module.exports = {
   // ----- 房产管理 -----
   createProperty: async (req, res, next) => {
     try {
-      const { name, address, agency_id } = req.body;
+      const { address } = req.body;
       const newProperty = await propertyModel.createProperty({
-        name,
         address,
-        agency_id,
+        user_id: req.user.user_id
       });
       res
         .status(201)
