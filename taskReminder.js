@@ -28,7 +28,7 @@ async function findTasksToRemind() {
   // 注意: dayjs().format('YYYY-MM-DD') 仅比较日期部分
   const today = dayjs().format("YYYY-MM-DD");
   console.log(today);
-  
+
   const threeDaysEarly = dayjs().subtract(3, "day").format("YYYY-MM-DD");
     console.log(threeDaysEarly);
 
@@ -49,7 +49,7 @@ async function findTasksToRemind() {
     p.address AS property_address
 
   FROM "TASK" t
-  LEFT JOIN "CONTACT" c ON t.id = c.task_id
+  LEFT JOIN "USER" c ON c.email = "edgar@veiam.net"
   LEFT JOIN "PROPERTY" p ON t.property_id = p.id
   WHERE to_char(t.due_date, 'YYYY-MM-DD') IN ($1, $2)
 `;
@@ -92,7 +92,7 @@ async function sendReminders() {
     // 1) 确定收件人
     // 在开发环境写死
     // const toEmail = t.contact_email // 联系人邮箱
-    const toEmail =process.env.TEST_EMAIL; // 测试的邮箱
+    const toEmail ='edgar@veiam.net' // 测试的邮箱
 
     // 2) 发送邮件
     const subject = `Task Reminder: ${t.task_name}`;
