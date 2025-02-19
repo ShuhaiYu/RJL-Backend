@@ -20,13 +20,27 @@ async function createTask({
   task_name,
   task_description = null,
   repeat_frequency = null,
+  next_reminder = null,
   type = null,
   status = null,
   email_id = null,
 }) {
+  // 如果没有传入 next_reminder，则自动生成
+  if (!next_reminder) {
+    if (due_date) {
+      // 如果提供了截止日期，则提醒时间设为截止日期前 30 天
+      next_reminder = dayjs(due_date).subtract(30, 'day').toISOString();
+    } else {
+      // 如果没有截止日期，则默认提醒时间设为当前日期的 30 天前
+      next_reminder = dayjs().subtract(30, 'day').toISOString();
+    }
+  }
+
   const insertSQL = `
-    INSERT INTO "TASK" (property_id, due_date, task_name, task_description, repeat_frequency, type, status, email_id, is_active)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+    INSERT INTO "TASK" 
+      (property_id, due_date, task_name, task_description, repeat_frequency, next_reminder, type, status, email_id, is_active)
+    VALUES 
+      ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
     RETURNING *;
   `;
   const values = [
@@ -35,6 +49,7 @@ async function createTask({
     task_name,
     task_description,
     repeat_frequency,
+    next_reminder,
     type,
     status,
     email_id,
@@ -42,6 +57,7 @@ async function createTask({
   const { rows } = await pool.query(insertSQL, values);
   return rows[0];
 }
+
 
 /**
  * 查询指定任务详情，包含所属房产信息，以及所有联系人和邮件（仅返回激活的任务）
@@ -56,6 +72,7 @@ async function getTaskById(taskId) {
       T.task_description,
       T.due_date,
       T.repeat_frequency,
+      T.next_reminder,
       T.property_id,
       T.status,
       T.type,
@@ -92,6 +109,7 @@ async function getTaskById(taskId) {
     task_description: first.task_description,
     due_date: first.due_date,
     repeat_frequency: first.repeat_frequency,
+    next_reminder: first.next_reminder,
     status: first.status,
     type: first.type,
     property_id: first.property_id,
@@ -185,70 +203,65 @@ async function listTasks(requestingUser) {
 }
 
 async function listTodayTasks(requestingUser) {
-  // 2) 计算 today (只比较到日期级别)
-  //    你可以用 dayjs().format('YYYY-MM-DD') 或 new Date() + cast::date
-  const todayString = dayjs().format("YYYY-MM-DD");
-
   let tasks = [];
 
   if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
-    // ----- (A) admin / superuser => 返回所有今日到期的任务 -----
+    // (A) admin / superuser：返回所有需要提醒的任务
     const sqlAdmin = `
-        SELECT t.*, p.address as property_address
-        FROM "TASK" t
-        JOIN "PROPERTY" p ON t.property_id = p.id
-        WHERE t.is_active = true
-          AND to_char(t.due_date, 'YYYY-MM-DD') = $1
-        ORDER BY t.id DESC
-      `;
-    const { rows } = await pool.query(sqlAdmin, [todayString]);
+      SELECT t.*, p.address as property_address
+      FROM "TASK" t
+      JOIN "PROPERTY" p ON t.property_id = p.id
+      WHERE t.is_active = true
+        AND t.next_reminder <= NOW()
+        AND t.status <> 'done'
+      ORDER BY t.id DESC
+    `;
+    const { rows } = await pool.query(sqlAdmin);
     tasks = rows;
   } else if (requestingUser.role === "agency-admin") {
-    // ----- (B) agency-admin => 返回同机构下所有用户的今日任务 -----
+    // (B) agency-admin：返回同机构下所有用户的需要提醒任务
 
-    // 1. 找到该 agency 下所有用户
-    const agencyUsers = await userModel.getUsersByAgencyId(
-      requestingUser.agency_id
-    );
+    // 1. 获取该机构下所有用户
+    const agencyUsers = await userModel.getUsersByAgencyId(requestingUser.agency_id);
     if (!agencyUsers || agencyUsers.length === 0) {
-      return res.status(200).json([]);
+      return [];
     }
-    // 2. 收集这些用户的 id
-    const userIds = agencyUsers.map((u) => u.id); // e.g [2,5,10,...]
-    // 3. 查 TASK where property_id in (select p.id from PROPERTY p where p.user_id in userIds)
+    // 2. 收集用户的 id
+    const userIds = agencyUsers.map((u) => u.id); // e.g. [2, 5, 10, ...]
+    
+    // 3. 查询任务：物业的创建者在这些用户之中
     const sqlAgencyAdmin = `
-        SELECT t.*, p.address as property_address
-        FROM "TASK" t
-        JOIN "PROPERTY" p ON t.property_id = p.id
-        WHERE t.is_active = true
-          AND to_char(t.due_date, 'YYYY-MM-DD') = $1
-          AND p.user_id = ANY($2::int[])
-        ORDER BY t.id DESC
-      `;
-    const { rows } = await pool.query(sqlAgencyAdmin, [todayString, userIds]);
+      SELECT t.*, p.address as property_address
+      FROM "TASK" t
+      JOIN "PROPERTY" p ON t.property_id = p.id
+      WHERE t.is_active = true
+        AND t.next_reminder <= NOW()
+        AND t.status <> 'done'
+        AND p.user_id = ANY($1::int[])
+      ORDER BY t.id DESC
+    `;
+    const { rows } = await pool.query(sqlAgencyAdmin, [userIds]);
     tasks = rows;
   } else {
-    // ----- (C) agency-user => 只返回自己 user_id 创建的 property 的今日任务 -----
-
+    // (C) agency-user：只返回自己创建的物业对应的需要提醒任务
     const sqlAgencyUser = `
-        SELECT t.*
-        FROM "TASK" t
-        JOIN "PROPERTY" p ON t.property_id = p.id
-        WHERE t.is_active = true
-          AND to_char(t.due_date, 'YYYY-MM-DD') = $1
-          AND p.user_id = $2
-        ORDER BY t.id DESC
-      `;
-    const { rows } = await pool.query(sqlAgencyUser, [
-      todayString,
-      requestingUser.id,
-    ]);
+      SELECT t.*
+      FROM "TASK" t
+      JOIN "PROPERTY" p ON t.property_id = p.id
+      WHERE t.is_active = true
+        AND t.next_reminder <= NOW()
+        AND t.status <> 'done'
+        AND p.user_id = $1
+      ORDER BY t.id DESC
+    `;
+    const { rows } = await pool.query(sqlAgencyUser, [requestingUser.id]);
     tasks = rows;
   }
 
-  // 3) 返回结果
   return tasks;
 }
+
+
 
 /**
  * 软删除任务
