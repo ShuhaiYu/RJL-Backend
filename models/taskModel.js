@@ -212,7 +212,7 @@ async function listTodayTasks(requestingUser) {
       FROM "TASK" t
       JOIN "PROPERTY" p ON t.property_id = p.id
       WHERE t.is_active = true
-        AND t.next_reminder <= NOW()
+        AND t.next_reminder <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'done'
       ORDER BY t.id DESC
     `;
@@ -228,14 +228,14 @@ async function listTodayTasks(requestingUser) {
     }
     // 2. 收集用户的 id
     const userIds = agencyUsers.map((u) => u.id); // e.g. [2, 5, 10, ...]
-    
+
     // 3. 查询任务：物业的创建者在这些用户之中
     const sqlAgencyAdmin = `
       SELECT t.*, p.address as property_address
       FROM "TASK" t
       JOIN "PROPERTY" p ON t.property_id = p.id
       WHERE t.is_active = true
-        AND t.next_reminder <= NOW()
+        AND t.next_reminder <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'done'
         AND p.user_id = ANY($1::int[])
       ORDER BY t.id DESC
@@ -249,7 +249,7 @@ async function listTodayTasks(requestingUser) {
       FROM "TASK" t
       JOIN "PROPERTY" p ON t.property_id = p.id
       WHERE t.is_active = true
-        AND t.next_reminder <= NOW()
+        AND t.next_reminder <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'done'
         AND p.user_id = $1
       ORDER BY t.id DESC
