@@ -447,6 +447,15 @@ module.exports = {
         if (textBody.toLowerCase().includes("safety check")) {
           taskName = "Safety Check";
           taskDescription = "Mail indicates a safety check job.";
+        } else if (textBody.toLowerCase().includes("gas")) {
+          taskName = "Gas";
+          taskDescription = "Mail indicates a safety check job.";
+        } else if (textBody.toLowerCase().includes("electricity")) {
+          taskName = "Electricity";
+          taskDescription = "Mail indicates a safety check job.";
+        } else if (textBody.toLowerCase().includes("smoke alarm")) {
+          taskName = "Smoke alarm";
+          taskDescription = "Mail indicates a safety check job.";
         }
 
         const newTask = await taskModel.createTask({
