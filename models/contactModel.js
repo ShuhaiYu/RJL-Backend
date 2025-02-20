@@ -39,18 +39,25 @@ async function createContact({ name, phone, email, property_id }) {
 }
 
 /**
- * 列出所有处于激活状态的联系人记录
- * 只返回 is_active 为 true 的记录
- * 
+ * 列出当前用户所在机构下的所有处于激活状态的联系人记录
+ * 通过将 CONTACT 与 PROPERTY 以及 PROPERTY 所属的 USER 进行 JOIN，
+ * 只返回那些所属用户 (即房产的 owner) 的 agency_id 与当前用户相同的联系人记录，
+ * 同时附带房产的 address 信息（命名为 property_address）。
+ *
+ * @param {Object} currentUser 当前登录用户对象，必须包含 agency_id
  * @returns {Promise<Array>} 返回联系人记录数组
  */
-async function listContacts() {
+async function listContacts(currentUser) {
   const querySQL = `
-    SELECT * FROM "CONTACT"
-    WHERE is_active = true;
+    SELECT C.*, P.address as property_address
+    FROM "CONTACT" C
+    JOIN "PROPERTY" P ON C.property_id = P.id
+    JOIN "USER" U ON P.user_id = U.id
+    WHERE C.is_active = true
+      AND U.agency_id = $1;
   `;
   try {
-    const { rows } = await pool.query(querySQL);
+    const { rows } = await pool.query(querySQL, [currentUser.agency_id]);
     return rows;
   } catch (error) {
     throw error;

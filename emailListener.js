@@ -80,7 +80,7 @@ imap.once('ready', () => {
 
             // 调用后端接口，把 textBody 传进去
             try {
-              await axios.post(`${BACKEND_API_URL}/superuser/create-property-by-email`, {
+              await axios.post(`${BACKEND_API_URL}/api/emails/process`, {
                 textBody,
                 subject,
                 from,

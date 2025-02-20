@@ -6,11 +6,8 @@ const cors = require('cors');
 const app = express();
 
 const authRoutes = require('./routes/authRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-const superuserRoutes = require('./routes/superuserRoutes');
-const agencyAdminRoutes = require('./routes/agencyAdminRoutes');
-const agencyUserRoutes = require('./routes/agencyUserRoutes');
 const testRouter = require('./routes/test'); 
+const apiRouter = require('./routes/apiRoutes');
 
 const { setupCronJobs } = require('./cron');
 
@@ -23,11 +20,10 @@ app.use(cors({
 
 // 路由
 app.use('/auth', authRoutes);
-app.use('/superuser', superuserRoutes);
-app.use('/admin', adminRoutes);
-app.use('/agency/admin', agencyAdminRoutes);
-app.use('/agency/user', agencyUserRoutes);
+
 app.use('/test', testRouter);
+
+app.use('/api', apiRouter);
 
 // 错误处理
 app.use((err, req, res, next) => {
