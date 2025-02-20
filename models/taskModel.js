@@ -299,6 +299,12 @@ async function updateTask(taskId, fields) {
   const finalRepeat = fields.repeat_frequency ?? existing.repeat_frequency;
   const finalType = fields.type ?? existing.type;
   const finalStatus = fields.status ?? existing.status;
+  // 计算 next_reminder
+  let finalReminder = existing.next_reminder;
+  if (fields.due_date) {
+    finalReminder = dayjs(fields.due_date).subtract(30, 'day').toISOString();
+  }
+  
 
   // 3) 构造 SQL
   const updateSQL = `
@@ -308,9 +314,10 @@ async function updateTask(taskId, fields) {
       task_name = $2,
       task_description = $3,
       repeat_frequency = $4,
-      type = $5,
-      status = $6
-    WHERE id = $7
+      next_reminder = $5,
+      type = $6,
+      status = $7
+    WHERE id = $8
     RETURNING *;
   `;
 
@@ -320,6 +327,7 @@ async function updateTask(taskId, fields) {
     finalTaskName,
     finalDescription,
     finalRepeat,
+    finalReminder,
     finalType,
     finalStatus,
     taskId,

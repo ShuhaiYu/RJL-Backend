@@ -52,30 +52,11 @@ async function findTasksToRemind() {
   LEFT JOIN "PROPERTY" p ON t.property_id = p.id
   LEFT JOIN "CONTACT" c ON p.id = c.property_id
   WHERE to_char(t.due_date, 'YYYY-MM-DD') IN ($1, $2)
+  or to_char(t.next_reminder, 'YYYY-MM-DD') IN ($1, $2)
 `;
 
   const { rows } = await pool.query(sql, [today, threeDaysEarly]);
   return rows;
-}
-
-/**
- * 更新 Task 下次提醒时间
- * 如果 repeat_frequency = 'monthly' => 下次 = 当前 + 1个月
- * 如果 'quarterly' => +3个月
- * 如果 'yearly' => +12个月
- * 如果 'none' => 不再提醒（设为null）
- */
-async function updateTaskNextReminder(taskId, repeatFrequency) {
-  let newNextReminder = null;
-  if (repeatFrequency && repeatFrequency !== "none") {
-    let monthsToAdd = 0;
-    if (repeatFrequency === "monthly") monthsToAdd = 1;
-    if (repeatFrequency === "quarterly") monthsToAdd = 3;
-    if (repeatFrequency === "yearly") monthsToAdd = 12;
-    newNextReminder = dayjs().add(monthsToAdd, "month").toDate();
-  }
-  const sql = `UPDATE "TASK" SET next_reminder = $1 WHERE id = $2`;
-  await pool.query(sql, [newNextReminder, taskId]);
 }
 
 /**
@@ -119,10 +100,6 @@ async function sendReminders() {
     } catch (err) {
       console.error(`[REMINDER] Failed to send email for task #${t.id}`, err);
     }
-
-    // 3) 如果有 repeat_frequency, 计算并更新 next_reminder
-    //    如果 'none', 就不再提醒
-    await updateTaskNextReminder(t.id, t.repeat_frequency);
   }
 }
 
