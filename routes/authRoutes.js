@@ -7,9 +7,6 @@ const authMiddleware = require('../middlewares/authMiddleware');
 // Login
 router.post('/login', authController.login);
 
-// Register
-router.post('/register', authController.register);
-
 // Refresh token (get new access token)
 router.post('/refresh',  authController.refreshToken);
 
