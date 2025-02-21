@@ -1,17 +1,65 @@
 // controllers/UserController.js
 const userModel = require("../models/userModel");
-const { getUserPermissions } = require("../models/userPermissionModel");
+const { getUserPermissions, createUserPermission } = require("../models/userPermissionModel"); // 从中间表查询权限
+const { getPermissionId } = require("../models/permissionModel");
+const bcrypt = require("bcrypt");
+
 
 module.exports = {
   // 创建用户（注：权限判断在中间件或内部判断）
+  // 2) Register a new user
   createUser: async (req, res, next) => {
     try {
-      const { email, name, password, role, agency_id } = req.body;
-      // 创建用户
-      const newUser = await userModel.createUser({ email, name, password, role, agency_id });
-      res.status(201).json({ message: "User created successfully", data: newUser });
-    } catch (error) {
-      next(error);
+      const { email, password, name, role, agency_id, permissions } = req.body;
+      const existingUser = await userModel.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({
+          message: "This email is already registered, please use another email",
+        });
+      }
+
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(password, 10);
+      // Use provided name or fallback to email
+      const finalName = name || email;
+      const userRole = role || "user";
+
+      // Create user in the database
+      const newUser = await userModel.createUser({
+        email,
+        name: finalName,
+        password: hashedPassword,
+        role: userRole,
+        agency_id: agency_id || null,
+      });
+
+      // If a permissions object is provided, iterate over it to assign permissions dynamically.
+      // The permissions object is expected to have a format like:
+      // { user: ["create", "read"], agency: ["read", "update"], ... }
+      if (permissions && typeof permissions === "object") {
+        for (const scope in permissions) {
+          if (Array.isArray(permissions[scope])) {
+            for (const permValue of permissions[scope]) {
+              // Look up the permission id dynamically from the PERMISSION table
+              const permissionId = await getPermissionId(permValue, scope);
+              if (permissionId) {
+                await createUserPermission(newUser.id, permissionId);
+              }
+            }
+          }
+        }
+      }
+
+      return res.status(201).json({
+        message: "Registration successful",
+        data: {
+          id: newUser.id,
+          email: newUser.email,
+          role: newUser.role,
+        },
+      });
+    } catch (err) {
+      next(err);
     }
   },
 
