@@ -30,13 +30,22 @@ async function createAgency({ agency_name, address = null, phone = null, logo = 
 }
 
 /**
- * 根据机构 ID 获取机构信息
+ * 根据机构 ID 获取机构信息及其房产信息
  * 
  * @param {number} agencyId - 机构 ID
- * @returns {Promise<Object|null>} 返回机构记录，如不存在则返回 null
+ * @returns {Promise<Object|null>} 返回机构记录，包含 properties 字段，如不存在则返回 null
  */
 async function getAgencyByAgencyId(agencyId) {
-  const querySQL = `SELECT * FROM "AGENCY" WHERE id = $1;`;
+  const querySQL = `
+    SELECT 
+      A.*, 
+      COALESCE(json_agg(P.*) FILTER (WHERE P.id IS NOT NULL), '[]') AS properties
+    FROM "AGENCY" A
+    LEFT JOIN "USER" U ON A.id = U.agency_id
+    LEFT JOIN "PROPERTY" P ON U.id = P.user_id
+    WHERE A.id = $1
+    GROUP BY A.id;
+  `;
   try {
     const { rows } = await pool.query(querySQL, [agencyId]);
     return rows[0] || null;
@@ -45,6 +54,7 @@ async function getAgencyByAgencyId(agencyId) {
     throw error;
   }
 }
+
 
 /**
  * 更新机构信息
