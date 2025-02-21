@@ -78,10 +78,8 @@ async function getPropertyById(propertyId) {
 
   // 查询联系人：通过 TASK 与 CONTACT 关联，且仅返回激活的联系人
   const contactsSQL = `
-    SELECT C.*
-    FROM "CONTACT" C
-    JOIN "TASK" T ON C.task_id = T.id
-    WHERE T.property_id = $1 AND C.is_active = true;
+    SELECT * FROM "CONTACT" 
+    WHERE property_id = $1 AND is_active = true;
   `;
   const { rows: contacts } = await pool.query(contactsSQL, [propertyId]);
   property.contacts = contacts;

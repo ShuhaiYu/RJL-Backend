@@ -7,7 +7,7 @@ module.exports = {
   authenticateToken: (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      return res.status(401).json({ message: '未提供 token' });
+      return res.status(401).json({ message: 'No token provided' });
     }
     const token = authHeader.split(' ')[1];
     try {
@@ -17,44 +17,42 @@ module.exports = {
       req.user = decoded;
       next();
     } catch (err) {
-      return res.status(401).json({ message: '无效的 token' });
+      return res.status(401).json({ message: 'Invalid token' });
     }
   },
 
   /**
-   * 通用权限校验中间件
-   * 要求用户必须拥有指定的权限，权限信息直接从 token 的 payload 中获取
-   *
-   * @param {string} requiredValue - 必须的权限值，例如 'create'
-   * @param {string} requiredScope - 必须的权限作用域，例如 'user'
-   * @returns {Function} Express 中间件函数
-   *
-   * 使用示例：
-   *   router.post('/users/create',
-   *     authenticateToken,
-   *     requirePermission('create', 'user'),
-   *     controller.createUser);
+   * 适配新权限结构的权限校验中间件
+   * @param {string} requiredValue - 需要的操作权限，如 'create', 'read'
+   * @param {string} requiredScope - 权限作用域，如 'user', 'agency'
    */
   requirePermission: (requiredValue, requiredScope) => {
     return (req, res, next) => {
       if (!req.user) {
-        return res.status(403).json({ message: '未授权' });
+        return res.status(403).json({ message: 'Unauthorized' });
       }
+      
       const permissions = req.user.permissions;
-      if (!permissions || !Array.isArray(permissions)) {
-        return res.status(403).json({ message: 'Token 中缺少权限信息' });
+      
+      // 检查权限结构是否符合预期
+      if (!permissions || typeof permissions !== 'object') {
+        return res.status(403).json({ message: 'Invalid permissions format in token' });
       }
-      const hasPermission = permissions.some(
-        (p) =>
-          p.permission_value === requiredValue &&
-          p.permission_scope === requiredScope
-      );
-      if (!hasPermission) {
-        return res
-          .status(403)
-          .json({ message: `缺少权限: ${requiredValue} ${requiredScope}` });
+      
+      // 获取对应作用域的权限列表
+      const scopePermissions = permissions[requiredScope];
+      if (!Array.isArray(scopePermissions)) {
+        return res.status(403).json({ message: `No permissions scope: ${requiredScope}` });
       }
+      
+      // 检查是否拥有所需权限
+      if (!scopePermissions.includes(requiredValue)) {
+        return res.status(403).json({
+          message: `Missing permission: ${requiredScope}.${requiredValue}`
+        });
+      }
+      
       next();
     };
-  },
+  }
 };

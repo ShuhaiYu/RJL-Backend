@@ -44,7 +44,8 @@ module.exports = {
   // 列出所有用户（可能需要分页、筛选）
   listUsers: async (req, res, next) => {
     try {
-      const users = await userModel.listUsers(req.user);
+      const user = await userModel.getUserById(req.user.user_id);
+      const users = await userModel.listUsers(user);
       res.status(200).json(users);
     } catch (error) {
       next(error);

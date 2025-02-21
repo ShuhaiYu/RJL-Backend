@@ -154,7 +154,7 @@ async function listUsers(requestingUser) {
       const query = `SELECT * FROM "USER" ORDER BY id;`;
       const { rows } = await pool.query(query);
       return rows;
-    } else if (requestingUser.role === 'agency') {
+    } else if (requestingUser.role === 'agency-admin') {
       // 机构用户仅可查看同一机构内的用户
       if (!requestingUser.agency_id) {
         throw new Error('Agency user must have an agency_id');
