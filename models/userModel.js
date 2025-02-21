@@ -151,7 +151,7 @@ async function listUsers(requestingUser) {
   try {
     if (requestingUser.role === 'superuser' || requestingUser.role === 'admin') {
       // 超级管理员或 admin 可查看所有用户
-      const query = `SELECT * FROM "USER" ORDER BY id;`;
+      const query = `SELECT * FROM "USER" WHERE is_active = true ORDER BY id;`;
       const { rows } = await pool.query(query);
       return rows;
     } else if (requestingUser.role === 'agency-admin') {
@@ -159,12 +159,12 @@ async function listUsers(requestingUser) {
       if (!requestingUser.agency_id) {
         throw new Error('Agency user must have an agency_id');
       }
-      const query = `SELECT * FROM "USER" WHERE agency_id = $1 ORDER BY id;`;
+      const query = `SELECT * FROM "USER" WHERE agency_id = $1 and is_active = true ORDER BY id;`;
       const { rows } = await pool.query(query, [requestingUser.agency_id]);
       return rows;
     } else {
       // 其他角色仅返回自身信息（或可根据需求调整权限逻辑）
-      const query = `SELECT * FROM "USER" WHERE id = $1;`;
+      const query = `SELECT * FROM "USER" WHERE id = $1 and is_active = true;`;
       const { rows } = await pool.query(query, [requestingUser.id]);
       return rows;
     }

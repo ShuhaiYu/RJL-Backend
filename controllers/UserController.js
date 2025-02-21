@@ -51,4 +51,15 @@ module.exports = {
       next(error);
     }
   },
+
+  // 删除用户
+  deleteUser: async (req, res, next) => {
+    try {
+      const user_id = req.params.id;
+      await userModel.deleteUser(user_id);
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  },
 };

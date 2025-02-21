@@ -50,6 +50,11 @@ router.put(
   authMiddleware.requirePermission("update", "user"),
   userPermissionController.updateUserPermissions
 );
+router.delete(
+   "/users/:id",
+   authMiddleware.requirePermission("delete", "user"),
+   userController.deleteUser
+)
 
 /* -------------------------------
    Agency Management Routes
