@@ -4,7 +4,8 @@ const router = express.Router();
 
 // 中间件：所有后续接口需要 token 验证
 const authMiddleware = require("../middlewares/authMiddleware");
-
+// 载入 multer 中间件
+const upload = require("../middlewares/upload");
 // 资源控制器
 const userController = require("../controllers/UserController");
 const agencyController = require("../controllers/AgencyController");
@@ -13,6 +14,7 @@ const taskController = require("../controllers/TaskController");
 const contactController = require("../controllers/ContactController");
 const emailController = require("../controllers/EmailController");
 const userPermissionController = require("../controllers/UserPermissionController");
+const taskFileController = require("../controllers/TaskFileController");
 
 // 邮件监听器route
 router.post("/emails/process", emailController.createPropertyByEmail);
@@ -140,6 +142,20 @@ router.delete(
   authMiddleware.requirePermission("delete", "task"),
   taskController.deleteTask
 );
+
+
+// 创建上传接口
+router.post("/tasks/:taskId/files", upload.single("file"), taskFileController.uploadTaskFile);
+
+// 获取文件列表接口
+router.get("/tasks/:taskId/files", taskFileController.getTaskFiles);
+
+// 删除文件接口
+router.delete("/tasks/:taskId/files/:fileId", taskFileController.deleteTaskFile);
+
+// 获取预签名URL
+router.get("/tasks/:taskId/files/:fileId/download", taskFileController.getFileSignedUrl);
+
 
 /* -------------------------------
    Contact Management Routes
