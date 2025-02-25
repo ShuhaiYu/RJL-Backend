@@ -123,6 +123,11 @@ router.get(
   taskController.listTodayTasks
 );
 router.get(
+  "/tasks/agency-lists",
+  authMiddleware.requirePermission("read", "task"),
+  taskController.listAgencyTasks
+);
+router.get(
   "/tasks/:id",
   authMiddleware.requirePermission("read", "task"),
   taskController.getTaskDetail
@@ -193,7 +198,7 @@ router.delete(
 --------------------------------- */
 router.get(
   "/emails",
-  authMiddleware.requirePermission("read", "email"),
+  // authMiddleware.requirePermission("read", "email"),
   emailController.listEmails
 );
 

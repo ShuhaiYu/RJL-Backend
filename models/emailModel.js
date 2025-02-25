@@ -1,21 +1,28 @@
 const pool = require("../config/db");
 
-async function createEmailRecord({ subject, sender, email_body, task_id, html, property_id }) {
+async function createEmailRecord({
+  subject,
+  sender,
+  email_body,
+  html,
+  property_id,
+  agency_id,
+}) {
   try {
     await pool.query("BEGIN");
 
     const insertEmailSQL = `
-        INSERT INTO "EMAIL" (subject, sender, email_body, task_id, html, property_id, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, timezone('Australia/Melbourne', CURRENT_TIMESTAMP))
+        INSERT INTO "EMAIL" (subject, sender, email_body, html, property_id, agency_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *;
     `;
     const { rows: emailRows } = await pool.query(insertEmailSQL, [
       subject,
       sender,
       email_body,
-      task_id,
       html,
       property_id,
+      agency_id,
     ]);
     const email = emailRows[0];
 
@@ -26,7 +33,6 @@ async function createEmailRecord({ subject, sender, email_body, task_id, html, p
     throw error;
   }
 }
-
 
 async function listEmails(user) {
   const querySQL = `
@@ -58,5 +64,21 @@ async function listEmails(user) {
   return rows;
 }
 
+/**
+ * 根据 subject + sender + property_id 查重
+ * (你可以加上其他字段判定是否真算重复，如 email_body 相同)
+ */
+async function getEmailByUniqueKey({ subject, sender, property_id }) {
+  const sql = `
+    SELECT *
+    FROM "EMAIL"
+    WHERE subject = $1
+      AND sender = $2
+      AND property_id = $3
+    LIMIT 1;
+  `;
+  const { rows } = await pool.query(sql, [subject, sender, property_id]);
+  return rows[0] || null;
+}
 
-module.exports = { createEmailRecord, listEmails };
+module.exports = { createEmailRecord, listEmails, getEmailByUniqueKey };

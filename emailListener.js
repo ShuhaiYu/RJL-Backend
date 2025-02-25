@@ -3,6 +3,7 @@ require('dotenv').config();
 const Imap = require('node-imap');
 const { simpleParser } = require('mailparser');
 const axios = require('axios');
+const { createPropertyByEmail } = require('./controllers/emailController'); 
 
 // 从环境变量读取配置（这里以Gmail为例）
 const { 
@@ -67,33 +68,51 @@ imap.once('ready', () => {
         });
 
         msg.once('end', async () => {
-          // 用 mailparser 把原始邮件解析成更易读的对象
           try {
+            // 1) 解析邮件
             const parsed = await simpleParser(rawBuffer);
-            const from = parsed.from?.text || '';       // 发件人
-            const subject = parsed.subject || '';       // 主题
-            const textBody = parsed.text || '';         // 纯文本正文
-            const htmlBody = parsed.html || '';     // 富文本正文
+            const from = parsed.from?.text || '';
+            const subject = parsed.subject || '';
+            const textBody = parsed.text || '';
+            const htmlBody = parsed.html || '';
 
             console.log(`[IMAP] Subject: ${subject}, From: ${from}`);
             console.log('[IMAP] Text Body:', textBody);
 
-            // 调用后端接口，把 textBody 传进去
-            try {
-              await axios.post(`${BACKEND_API_URL}/api/emails/process`, {
-                textBody,
+            // 2) 直接调用 Controller，而不是 axios.post
+            //    需要手动“伪造” req, res, next
+            const mockReq = {
+              body: {
                 subject,
                 from,
+                textBody,
                 htmlBody
-              })
-              .then((res) => {
-                // log response
-                console.log(res.data);
-              });
-              console.log('[IMAP] Successfully called create-property-by-email API');
-            } catch (apiErr) {
-              console.error('[IMAP] API Error:', apiErr.response?.data || apiErr.message);
-            }
+              }
+            };
+
+            // 简单版的 res，至少需要 status() 和 json()
+            const mockRes = {
+              statusCode: 200,
+              status: function(code) {
+                this.statusCode = code;
+                return this; // 链式调用
+              },
+              json: function(data) {
+                console.log('[IMAP] createPropertyByEmail result:', data);
+                // 你还可以在这里把 data 存到变量，或者做别的事情
+              }
+            };
+
+            // next 用于捕获 controller 抛出的错误
+            const mockNext = (err) => {
+              if (err) {
+                console.error('[IMAP] Controller error:', err);
+              }
+            };
+
+            // 3) 调用 Controller
+            await createPropertyByEmail(mockReq, mockRes, mockNext);
+
           } catch (parseErr) {
             console.error('[IMAP] mailparser error:', parseErr);
           }

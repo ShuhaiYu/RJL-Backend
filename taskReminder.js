@@ -21,7 +21,7 @@ const transporter = nodemailer.createTransport({
 /**
  * 示例： 查找需要提醒的任务
  * 逻辑：
- *   1. 任务的 due_date 是 “今天” 或 “三天前”
+ *   1. 任务的 due_date 是 “今天” 或 “60天前”
  *   2. 如果有 repeat_frequency，需要再判断 next_reminder 等（示例中简化处理）
  */
 async function findTasksToRemind() {
@@ -29,11 +29,9 @@ async function findTasksToRemind() {
   const today = dayjs().format("YYYY-MM-DD");
   console.log(today);
 
-  const threeDaysEarly = dayjs().subtract(3, "day").format("YYYY-MM-DD");
-    console.log(threeDaysEarly);
-
-  // 在这里，我们假设“到期前3天”和“到期当天”都需要提醒
-  // 你可以改成更复杂的sql: 例如 (due_date::date = today or due_date::date = threeDaysLater)
+  const sixtyDaysEarly = dayjs().subtract(60, "day").format("YYYY-MM-DD");
+    console.log(sixtyDaysEarly);
+    
   const sql = `
   SELECT
     t.id,
@@ -55,7 +53,7 @@ async function findTasksToRemind() {
   or to_char(t.next_reminder, 'YYYY-MM-DD') IN ($1, $2)
 `;
 
-  const { rows } = await pool.query(sql, [today, threeDaysEarly]);
+  const { rows } = await pool.query(sql, [today, sixtyDaysEarly]);
   return rows;
 }
 

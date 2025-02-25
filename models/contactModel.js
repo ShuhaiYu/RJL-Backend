@@ -130,10 +130,24 @@ async function deleteContact(contactId) {
   }
 }
 
+async function getContactByPhoneAndProperty(phone, property_id) {
+  const sql = `
+    SELECT * FROM "CONTACT"
+    WHERE phone = $1
+      AND property_id = $2
+      AND is_active = true
+    LIMIT 1
+  `;
+  const { rows } = await pool.query(sql, [phone, property_id]);
+  return rows.length > 0 ? rows[0] : null;
+}
+
+
 module.exports = {
   createContact,
   listContacts,
   getContactById,
   updateContact,
   deleteContact,
+  getContactByPhoneAndProperty,
 };

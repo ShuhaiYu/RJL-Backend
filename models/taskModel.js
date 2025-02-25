@@ -24,23 +24,24 @@ async function createTask({
   type = null,
   status = null,
   email_id = null,
+  agency_id = null,
 }) {
   // 如果没有传入 next_reminder，则自动生成
   if (!next_reminder) {
     if (due_date) {
-      // 如果提供了截止日期，则提醒时间设为截止日期前 30 天
-      next_reminder = dayjs(due_date).subtract(30, 'day').toISOString();
+      // 如果提供了截止日期，则提醒时间设为截止日期前 60 天
+      next_reminder = dayjs(due_date).subtract(60, 'day').toISOString();
     } else {
-      // 如果没有截止日期，则默认提醒时间设为当前日期的 30 天前
-      next_reminder = dayjs().subtract(30, 'day').toISOString();
+      // 如果没有截止日期，则默认提醒时间设为当前日期的 60 天前
+      next_reminder = dayjs().subtract(60, 'day').toISOString();
     }
   }
 
   const insertSQL = `
     INSERT INTO "TASK" 
-      (property_id, due_date, task_name, task_description, repeat_frequency, next_reminder, type, status, email_id, is_active)
+      (property_id, due_date, task_name, task_description, repeat_frequency, next_reminder, type, status, email_id, agency_id, is_active)
     VALUES 
-      ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
     RETURNING *;
   `;
   const values = [
@@ -53,6 +54,7 @@ async function createTask({
     type,
     status,
     email_id,
+    agency_id,
   ];
   const { rows } = await pool.query(insertSQL, values);
   return rows[0];
@@ -213,7 +215,7 @@ async function listTodayTasks(requestingUser) {
       JOIN "PROPERTY" p ON t.property_id = p.id
       WHERE t.is_active = true
         AND t.next_reminder <= (NOW() + INTERVAL '3 months')
-        AND t.status <> 'done'
+        AND t.status <> 'COMPLETED'
       ORDER BY t.id DESC
     `;
     const { rows } = await pool.query(sqlAdmin);
@@ -236,7 +238,7 @@ async function listTodayTasks(requestingUser) {
       JOIN "PROPERTY" p ON t.property_id = p.id
       WHERE t.is_active = true
         AND t.next_reminder <= (NOW() + INTERVAL '3 months')
-        AND t.status <> 'done'
+        AND t.status <> 'COMPLETED'
         AND p.user_id = ANY($1::int[])
       ORDER BY t.id DESC
     `;
@@ -250,7 +252,7 @@ async function listTodayTasks(requestingUser) {
       JOIN "PROPERTY" p ON t.property_id = p.id
       WHERE t.is_active = true
         AND t.next_reminder <= (NOW() + INTERVAL '3 months')
-        AND t.status <> 'done'
+        AND t.status <> 'COMPLETED'
         AND p.user_id = $1
       ORDER BY t.id DESC
     `;
@@ -261,6 +263,39 @@ async function listTodayTasks(requestingUser) {
   return tasks;
 }
 
+async function listDueSoonTasks(user) {
+  const twoMonthsLater = dayjs().add(2, "month").toISOString();
+
+  const sql = `
+      SELECT t.* , p.address as property_address
+      FROM "TASK" t
+      JOIN "PROPERTY" p ON p.id = t.property_id
+      WHERE t.status = 'INCOMPLETE'
+        AND t.is_active = true
+        AND t.due_date IS NOT NULL
+        AND t.due_date <= $1
+        AND p.user_id = $2
+      ORDER BY t.due_date ASC
+    `;
+
+  const { rows } = await pool.query(sql, [twoMonthsLater, user.id]);
+  return rows;
+}
+
+async function listProcessingTasks(user) {
+  const sql = `
+      SELECT t.* , p.address as property_address
+      FROM "TASK" t
+      JOIN "PROPERTY" p ON p.id = t.property_id
+      WHERE t.status = 'PROCESSING'
+        AND t.is_active = true
+        AND p.user_id = $1
+      ORDER BY t.due_date ASC
+    `;
+
+  const { rows } = await pool.query(sql, [user.id]);
+  return rows;
+}
 
 
 /**
@@ -335,6 +370,38 @@ async function updateTask(taskId, fields) {
   return rows[0];
 }
 
+/**
+ * 根据 property_id + task_name 查找是否已存在同名任务
+ * 可根据需要再加 type/status 等条件
+ */
+async function getTaskByNameAndProperty(task_name, property_id) {
+  const sql = `
+    SELECT *
+    FROM "TASK"
+    WHERE task_name = $1
+      AND property_id = $2
+      AND is_active = true
+    LIMIT 1;
+  `;
+  const { rows } = await pool.query(sql, [task_name, property_id]);
+  return rows[0] || null;
+}
+
+/**
+ * 更新 TASK.email_id
+ */
+async function updateTaskEmailId(taskId, emailId) {
+  const sql = `
+    UPDATE "TASK"
+    SET email_id = $1
+    WHERE id = $2
+    RETURNING *;
+  `;
+  const { rows } = await pool.query(sql, [emailId, taskId]);
+  return rows[0];
+}
+
+
 module.exports = {
   createTask,
   getTaskById,
@@ -342,4 +409,8 @@ module.exports = {
   deleteTask,
   updateTask,
   listTodayTasks,
+  listDueSoonTasks,
+  listProcessingTasks,
+  getTaskByNameAndProperty,
+  updateTaskEmailId,
 };
