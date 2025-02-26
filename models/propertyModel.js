@@ -62,7 +62,8 @@ async function getPropertyById(propertyId) {
 
   // 查询该房产下的任务列表
   const tasksSQL = `
-    SELECT * FROM "TASK" 
+    SELECT T.*, A.agency_name FROM "TASK" T 
+    JOIN "AGENCY" A ON T.agency_id = A.id
     WHERE property_id = $1;
   `;
   const { rows: tasks } = await pool.query(tasksSQL, [propertyId]);

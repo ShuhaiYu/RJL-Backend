@@ -1,17 +1,64 @@
 // controllers/AgencyController.js
 const agencyModel = require("../models/agencyModel");
+const userModel = require("../models/userModel");
+const bcrypt = require("bcrypt");
 
 module.exports = {
-  // 创建机构（创建机构后可能需要额外操作：如创建机构管理员）
+  // 创建机构（创建机构管理员）
   createAgency: async (req, res, next) => {
     try {
-      const { agency_name, address, phone, logo } = req.body;
-      const newAgency = await agencyModel.createAgency({ agency_name, address, phone, logo });
-      res.status(201).json({ message: "Agency created successfully", data: newAgency });
+      const {
+        agency_name,
+        address,
+        phone,
+        logo,
+        // 下面是用户相关字段
+        name,
+        email,
+        password
+      } = req.body;
+  
+      // 1. 创建Agency
+      const newAgency = await agencyModel.createAgency({
+        agency_name,
+        address,
+        phone,
+        logo,
+      });
+  
+      // 2. 创建一个默认的 "agency-admin" 用户
+      //    a. Hash密码
+      const hashedPassword = await bcrypt.hash(password, 10);
+  
+      //    b. 在 userModel.createUser(...) 中传入 agency_id = newAgency.id
+      const agencyAdminUser = await userModel.createUser({
+        email,
+        name: name || email, // 若没传 name，就用 email
+        password: hashedPassword,
+        role: "agency-admin",
+        agency_id: newAgency.id,
+      });
+  
+      // 3. 如果你需要分配默认权限，可以在这里调用:
+      //    for (const scope in defaultRolePermissions["agency-admin"]) { ... }
+  
+      // 4. 返回响应
+      res.status(201).json({
+        message: "Agency created successfully, and agency-admin user created",
+        data: {
+          agency: newAgency,
+          adminUser: {
+            id: agencyAdminUser.id,
+            email: agencyAdminUser.email,
+            role: agencyAdminUser.role,
+          }
+        }
+      });
     } catch (error) {
       next(error);
     }
   },
+  
 
   // 获取机构详情
   getAgencyDetail: async (req, res, next) => {

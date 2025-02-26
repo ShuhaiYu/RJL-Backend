@@ -8,8 +8,6 @@ module.exports = {
   createTask: async (req, res, next) => {
     try {
       const user = await userModel.getUserById(req.user.user_id);
-      if (!user || !user.agency_id)
-        return res.status(403).json({ message: "No associated agency" });
       const { property_id, due_date, task_name, task_description, repeat_frequency, status, type, agency_id } = req.body;
       const newTask = await taskModel.createTask({
         property_id,

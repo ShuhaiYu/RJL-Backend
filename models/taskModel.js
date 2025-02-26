@@ -78,6 +78,7 @@ async function getTaskById(taskId) {
       T.status,
       T.type,
       T.email_id,
+      T.agency_id,
 
       A.agency_name,
       
@@ -121,6 +122,7 @@ async function getTaskById(taskId) {
     contacts: [],
     email: [],
     email_id: first.email_id,
+    agency_id: first.agency_id,
     agency_name: first.agency_name,
   };
 

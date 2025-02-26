@@ -1,12 +1,12 @@
 // models/agency.model.js
 
-const pool = require('../config/db');
+const pool = require("../config/db");
 
 /**
  * 创建新机构记录
  * 注意：该方法仅负责在 AGENCY 表中插入机构信息，不再创建对应用户，
  * 用户的创建逻辑请放在 Controller 层处理。
- * 
+ *
  * @param {Object} param0 - 机构数据对象
  * @param {string} param0.agency_name - 机构名称
  * @param {string|null} [param0.address=null] - 机构地址
@@ -14,14 +14,24 @@ const pool = require('../config/db');
  * @param {string|null} [param0.logo=null] - 机构 Logo
  * @returns {Promise<Object>} 返回新创建的机构记录
  */
-async function createAgency({ agency_name, address = null, phone = null, logo = null }) {
+async function createAgency({
+  agency_name,
+  address = null,
+  phone = null,
+  logo = null,
+}) {
   const insertAgencySQL = `
     INSERT INTO "AGENCY" (agency_name, address, phone, logo)
     VALUES ($1, $2, $3, $4)
     RETURNING *;
   `;
   try {
-    const { rows } = await pool.query(insertAgencySQL, [agency_name, address, phone, logo]);
+    const { rows } = await pool.query(insertAgencySQL, [
+      agency_name,
+      address,
+      phone,
+      logo,
+    ]);
     return rows[0];
   } catch (error) {
     console.error("Error in createAgency:", error);
@@ -31,20 +41,47 @@ async function createAgency({ agency_name, address = null, phone = null, logo = 
 
 /**
  * 根据机构 ID 获取机构信息及其房产信息
- * 
+ *
  * @param {number} agencyId - 机构 ID
  * @returns {Promise<Object|null>} 返回机构记录，包含 properties 字段，如不存在则返回 null
  */
 async function getAgencyByAgencyId(agencyId) {
   const querySQL = `
-    SELECT 
-      A.*, 
-      COALESCE(json_agg(P.*) FILTER (WHERE P.id IS NOT NULL), '[]') AS properties
-    FROM "AGENCY" A
-    LEFT JOIN "USER" U ON A.id = U.agency_id
-    LEFT JOIN "PROPERTY" P ON U.id = P.user_id
-    WHERE A.id = $1
-    GROUP BY A.id;
+      SELECT 
+        A.*, 
+        COALESCE(json_agg(DISTINCT P) FILTER (WHERE P.id IS NOT NULL), '[]') AS properties,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', T.id,
+              'property_id', T.property_id,
+              'due_date', T.due_date,
+              'task_name', T.task_name,
+              'task_description', T.task_description,
+              'repeat_frequency', T.repeat_frequency,
+              'next_reminder', T.next_reminder,
+              'type', T.type,
+              'status', T.status,
+              'is_active', T.is_active,
+              'email_id', T.email_id,
+              'agency_id', T.agency_id,
+              'created_at', T.created_at,
+              'updated_at', T.updated_at,
+              'property_address', P.address  
+            )
+          ) FILTER (WHERE T.id IS NOT NULL),
+          '[]'
+        ) AS tasks
+      FROM "AGENCY" A
+      JOIN "USER" U ON A.id = U.agency_id
+      LEFT JOIN "PROPERTY" P ON U.id = P.user_id
+      LEFT JOIN "TASK" T ON P.id = T.property_id AND T.agency_id = A.id
+      WHERE A.id = $1
+      GROUP BY A.id;
+
+
+
+
   `;
   try {
     const { rows } = await pool.query(querySQL, [agencyId]);
@@ -55,11 +92,10 @@ async function getAgencyByAgencyId(agencyId) {
   }
 }
 
-
 /**
  * 更新机构信息
  * 动态构造更新语句，允许更新多个字段，例如 { agency_name, address, phone, logo, is_active }
- * 
+ *
  * @param {number} agencyId - 机构 ID
  * @param {Object} fields - 要更新的字段及新值的对象
  * @returns {Promise<Object>} 返回更新后的机构记录
@@ -71,9 +107,13 @@ async function updateAgency(agencyId, fields) {
       throw new Error("No fields provided for update");
     }
     // 动态构造 SET 子句，例如："agency_name" = $1, "address" = $2, ...
-    const setClause = keys.map((key, index) => `"${key}" = $${index + 1}`).join(', ');
-    const values = keys.map(key => fields[key]);
-    const querySQL = `UPDATE "AGENCY" SET ${setClause} WHERE id = $${keys.length + 1} RETURNING *;`;
+    const setClause = keys
+      .map((key, index) => `"${key}" = $${index + 1}`)
+      .join(", ");
+    const values = keys.map((key) => fields[key]);
+    const querySQL = `UPDATE "AGENCY" SET ${setClause} WHERE id = $${
+      keys.length + 1
+    } RETURNING *;`;
     const { rows } = await pool.query(querySQL, [...values, agencyId]);
     return rows[0];
   } catch (error) {
@@ -84,7 +124,7 @@ async function updateAgency(agencyId, fields) {
 
 /**
  * 列出所有机构记录
- * 
+ *
  * @returns {Promise<Array>} 返回机构记录数组
  */
 async function listAgencies() {
@@ -100,7 +140,7 @@ async function listAgencies() {
 
 /**
  * 删除指定机构记录（软删除）
- * 
+ *
  * @param {number} agencyId - 机构 ID
  * @returns {Promise<Object>} 返回被删除的机构记录
  */
