@@ -3,7 +3,7 @@ require('dotenv').config();
 const Imap = require('node-imap');
 const { simpleParser } = require('mailparser');
 const axios = require('axios');
-const { createPropertyByEmail } = require('./controllers/emailController'); 
+const { createPropertyByEmail } = require('./controllers/EmailController'); 
 
 // 从环境变量读取配置（这里以Gmail为例）
 const { 
