@@ -30,10 +30,10 @@ async function createTask({
   if (!next_reminder) {
     if (due_date) {
       // 如果提供了截止日期，则提醒时间设为截止日期前 60 天
-      next_reminder = dayjs(due_date).subtract(60, 'day').toISOString();
+      next_reminder = dayjs(due_date).subtract(60, "day").toISOString();
     } else {
       // 如果没有截止日期，则默认提醒时间设为当前日期的 60 天前
-      next_reminder = dayjs().subtract(60, 'day').toISOString();
+      next_reminder = dayjs().subtract(60, "day").toISOString();
     }
   }
 
@@ -59,7 +59,6 @@ async function createTask({
   const { rows } = await pool.query(insertSQL, values);
   return rows[0];
 }
-
 
 /**
  * 查询指定任务详情，包含所属房产信息，以及所有联系人和邮件（仅返回激活的任务）
@@ -190,11 +189,12 @@ async function listTasks(requestingUser) {
       JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE T.is_active = true
         AND U.agency_id = $1
+        AND T.status <> 'UNKNOWN'
       ORDER BY T.id DESC;
     `;
     values.push(requestingUser.agency_id);
   } else {
-    if (!requestingUser) {
+    if (!requestingUser.agency_id) {
       throw new Error("Non-admin user must have an agency_id");
     }
     querySQL = `
@@ -202,7 +202,9 @@ async function listTasks(requestingUser) {
       FROM "TASK" T
       LEFT JOIN "PROPERTY" P ON T.property_id = P.id
       LEFT JOIN "AGENCY" A ON T.agency_id = A.id
-      WHERE T.is_active = true AND P.user_id = $1
+      WHERE T.is_active = true 
+        AND P.user_id = $1
+        AND T.status <> 'UNKNOWN'
       ORDER BY T.id DESC;
     `;
     values.push(requestingUser.id);
@@ -232,7 +234,9 @@ async function listTodayTasks(requestingUser) {
     // (B) agency-admin：返回同机构下所有用户的需要提醒任务
 
     // 1. 获取该机构下所有用户
-    const agencyUsers = await userModel.getUsersByAgencyId(requestingUser.agency_id);
+    const agencyUsers = await userModel.getUsersByAgencyId(
+      requestingUser.agency_id
+    );
     if (!agencyUsers || agencyUsers.length === 0) {
       return [];
     }
@@ -309,7 +313,6 @@ async function listProcessingTasks(user) {
   return rows;
 }
 
-
 /**
  * 软删除任务
  * 将指定任务的 is_active 字段设置为 false
@@ -350,9 +353,8 @@ async function updateTask(taskId, fields) {
   // 计算 next_reminder
   let finalReminder = existing.next_reminder;
   if (fields.due_date) {
-    finalReminder = dayjs(fields.due_date).subtract(30, 'day').toISOString();
+    finalReminder = dayjs(fields.due_date).subtract(30, "day").toISOString();
   }
-  
 
   // 3) 构造 SQL
   const updateSQL = `
@@ -364,7 +366,7 @@ async function updateTask(taskId, fields) {
       repeat_frequency = $4,
       next_reminder = $5,
       type = $6,
-      status = $7
+      status = $7,
       agency_id = $8
     WHERE id = $9
     RETURNING *;
@@ -415,7 +417,6 @@ async function updateTaskEmailId(taskId, emailId) {
   const { rows } = await pool.query(sql, [emailId, taskId]);
   return rows[0];
 }
-
 
 module.exports = {
   createTask,
