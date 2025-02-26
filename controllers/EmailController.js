@@ -261,7 +261,12 @@ module.exports = {
         }
 
         for (const t of tasksToCreate) {
-          const repeatFrequencyStr = t.repeatYears === 1 ? "yearly" : t.repeatYears > 1 ? `${t.repeatYears} years` : null;
+          const repeatFrequencyStr =
+            t.repeatYears === 1
+              ? "yearly"
+              : t.repeatYears > 1
+              ? `${t.repeatYears} years`
+              : null;
 
           // 先 createTask
           const newTask = await taskModel.createTask({
@@ -304,14 +309,25 @@ module.exports = {
         }
 
         // 全部任务创建完后，再创建一条 Email
-        const newEmail = await emailModel.createEmailRecord({
-          subject: subject || "No Subject",
-          sender: from || "Unknown Sender",
-          email_body: textBody,
-          html: htmlBody || "",
-          property_id: property.id,
-          agency_id: agency.id,
-        });
+        // 在插入之前先查重
+        const existingEmail = await emailModel.getEmailByUniqueKey(
+          subject || "No Subject",
+          from || "Unknown Sender",
+          property.id
+        );
+
+        let usedEmail = existingEmail;
+        if (!existingEmail) {
+          // 不存在 => 创建
+          usedEmail = await emailModel.createEmailRecord({
+            subject: subject || "No Subject",
+            sender: from || "Unknown Sender",
+            email_body: textBody,
+            html: htmlBody || "",
+            property_id: property.id,
+            agency_id: agency.id,
+          });
+        }
 
         // 批量 updateTaskEmailId，把同一个 emailId 塞给所有新Task
         for (const newTask of addressRecord.tasks) {

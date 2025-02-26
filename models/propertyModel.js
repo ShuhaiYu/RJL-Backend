@@ -170,19 +170,36 @@ async function deleteProperty(propertyId) {
  * 可更新字段包括：name 和 address（根据实际情况可扩展）
  * 
  * @param {number} propertyId - 房产 ID
- * @param {Object} param1 - 包含要更新的字段，例如 { name, address }
+ * @param {Object} param1 - 包含要更新的字段，例如 { address, user_id }
  * @returns {Promise<Object>} 返回更新后的房产记录
  */
-async function updateProperty(propertyId, { name, address }) {
+async function updateProperty(propertyId, { address, user_id }) {
+  const fields = [];
+  const values = [];
+  let idx = 1;
+
+  if (address !== undefined) {
+    fields.push(`address = $${idx++}`);
+    values.push(address);
+  }
+  if (user_id !== undefined) {
+    fields.push(`user_id = $${idx++}`);
+    values.push(user_id);
+  }
+  if (fields.length === 0) {
+    throw new Error("No fields provided to update");
+  }
+  values.push(propertyId);
   const updateSQL = `
     UPDATE "PROPERTY"
-    SET name = $1, address = $2
-    WHERE id = $3
+    SET ${fields.join(", ")}
+    WHERE id = $${idx}
     RETURNING *;
   `;
-  const { rows } = await pool.query(updateSQL, [name, address, propertyId]);
+  const { rows } = await pool.query(updateSQL, values);
   return rows[0];
 }
+
 
 module.exports = {
   createProperty,

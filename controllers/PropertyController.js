@@ -7,15 +7,84 @@ module.exports = {
   // 创建房产：一般要求当前用户必须关联机构
   createProperty: async (req, res, next) => {
     try {
-      const user = await userModel.getUserById(req.user.user_id);
-      if (!user || !user.agency_id)
-        return res.status(403).json({ message: "No associated agency" });
-      const { address } = req.body;
+      // 1) 获取“请求用户”信息（谁在调用接口）
+      const requestingUser = await userModel.getUserById(req.user.user_id);
+      if (!requestingUser) {
+        return res.status(403).json({ message: "Requesting user not found" });
+      }
+  
+      // 2) 从前端 body 获取必要字段
+      const { address, user_id } = req.body;
+      if (!address) {
+        return res.status(400).json({ message: "Address is required" });
+      }
+  
+      // 3) 根据请求用户角色，确定要使用的 user_id
+      let finalUserId = null;
+  
+      // 如果是 RJL admin / superuser => 可以指定 assignedUserId，但必须该用户有 agency_id
+      if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
+        if (!user_id) {
+          return res
+            .status(400)
+            .json({ message: "Must provide 'assignedUserId' for property" });
+        }
+        // 查一下 assignedUser
+        const assignedUser = await userModel.getUserById(user_id);
+        if (!assignedUser) {
+          return res.status(404).json({ message: "Assigned user not found" });
+        }
+        if (!assignedUser.agency_id) {
+          return res
+            .status(400)
+            .json({ message: "Cannot assign property to user without agency" });
+        }
+        finalUserId = assignedUser.id;
+      }
+      // 如果是 agency-admin / agency-staff => 只能分配给同 agency
+      else if (
+        requestingUser.role === "agency-admin" ||
+        requestingUser.role === "agency-staff"
+      ) {
+        // 如果不需要自由指定，可以直接把 property 绑定到请求用户
+        // finalUserId = requestingUser.id;
+  
+        // 如果想支持“给同 agency 下其他用户”：
+        if (!user_id) {
+          return res
+            .status(400)
+            .json({ message: "Must provide 'assignedUserId' for property" });
+        }
+        const assignedUser = await userModel.getUserById(user_id);
+        if (!assignedUser) {
+          return res.status(404).json({ message: "Assigned user not found" });
+        }
+        // 必须同 agency
+        if (
+          !assignedUser.agency_id ||
+          assignedUser.agency_id !== requestingUser.agency_id
+        ) {
+          return res.status(403).json({
+            message: "You can only assign property to users in your agency",
+          });
+        }
+  
+        finalUserId = assignedUser.id;
+      } else {
+        // 其他角色，如普通用户，禁止创建
+        return res.status(403).json({ message: "No permission to create property" });
+      }
+  
+      // 4) 开始插入
       const newProperty = await propertyModel.createProperty({
         address,
-        user_id: user.id,
+        user_id: finalUserId,
       });
-      res.status(201).json({ message: "Property created successfully", data: newProperty });
+  
+      return res.status(201).json({
+        message: "Property created successfully",
+        data: newProperty,
+      });
     } catch (error) {
       next(error);
     }

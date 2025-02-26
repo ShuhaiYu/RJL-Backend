@@ -79,6 +79,8 @@ async function getTaskById(taskId) {
       T.status,
       T.type,
       T.email_id,
+
+      A.agency_name,
       
       P.address as property_address,
       
@@ -96,6 +98,7 @@ async function getTaskById(taskId) {
     LEFT JOIN "PROPERTY" P ON T.property_id = P.id
     LEFT JOIN "CONTACT" C ON C.property_id = P.id AND C.is_active = true
     LEFT JOIN "EMAIL" E ON E.id = T.email_id
+    Left JOIN "AGENCY" A ON T.agency_id = A.id
     WHERE T.id = $1 AND T.is_active = true;
   `;
   const { rows } = await pool.query(querySQL, [taskId]);
@@ -119,6 +122,7 @@ async function getTaskById(taskId) {
     contacts: [],
     email: [],
     email_id: first.email_id,
+    agency_name: first.agency_name,
   };
 
   // 使用 Map 去重
@@ -167,9 +171,10 @@ async function listTasks(requestingUser) {
   let values = [];
   if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
     querySQL = `
-      SELECT T.*, P.address as property_address
+      SELECT T.*, P.address as property_address, A.agency_name
       FROM "TASK" T
       LEFT JOIN "PROPERTY" P ON T.property_id = P.id
+      LEFT JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE T.is_active = true
       ORDER BY T.id DESC;
     `;
@@ -178,10 +183,11 @@ async function listTasks(requestingUser) {
       throw new Error("Agency user must have an agency_id");
     }
     querySQL = `
-      SELECT T.*, P.address as property_address
+      SELECT T.*, P.address as property_address, A.agency_name
       FROM "TASK" T
       JOIN "PROPERTY" P ON T.property_id = P.id
       JOIN "USER" U ON P.user_id = U.id
+      JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE T.is_active = true
         AND U.agency_id = $1
       ORDER BY T.id DESC;
@@ -192,9 +198,10 @@ async function listTasks(requestingUser) {
       throw new Error("Non-admin user must have an agency_id");
     }
     querySQL = `
-      SELECT T.*, P.address as property_address
+      SELECT T.*, P.address as property_address, A.agency_name
       FROM "TASK" T
       LEFT JOIN "PROPERTY" P ON T.property_id = P.id
+      LEFT JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE T.is_active = true AND P.user_id = $1
       ORDER BY T.id DESC;
     `;
@@ -210,9 +217,10 @@ async function listTodayTasks(requestingUser) {
   if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
     // (A) admin / superuser：返回所有需要提醒的任务
     const sqlAdmin = `
-      SELECT t.*, p.address as property_address
+      SELECT t.*, p.address as property_address, A.agency_name
       FROM "TASK" t
       JOIN "PROPERTY" p ON t.property_id = p.id
+      JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE t.is_active = true
         AND t.next_reminder <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'COMPLETED'
@@ -233,9 +241,10 @@ async function listTodayTasks(requestingUser) {
 
     // 3. 查询任务：物业的创建者在这些用户之中
     const sqlAgencyAdmin = `
-      SELECT t.*, p.address as property_address
+      SELECT t.*, p.address as property_address, A.agency_name
       FROM "TASK" t
       JOIN "PROPERTY" p ON t.property_id = p.id
+      JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE t.is_active = true
         AND t.next_reminder <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'COMPLETED'
@@ -247,9 +256,10 @@ async function listTodayTasks(requestingUser) {
   } else {
     // (C) agency-user：只返回自己创建的物业对应的需要提醒任务
     const sqlAgencyUser = `
-      SELECT t.*
+      SELECT t.*, p.address as property_address, A.agency_name
       FROM "TASK" t
       JOIN "PROPERTY" p ON t.property_id = p.id
+      JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE t.is_active = true
         AND t.next_reminder <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'COMPLETED'
@@ -267,9 +277,10 @@ async function listDueSoonTasks(user) {
   const twoMonthsLater = dayjs().add(2, "month").toISOString();
 
   const sql = `
-      SELECT t.* , p.address as property_address
+      SELECT t.* , p.address as property_address, A.agency_name
       FROM "TASK" t
       JOIN "PROPERTY" p ON p.id = t.property_id
+      JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE t.status = 'INCOMPLETE'
         AND t.is_active = true
         AND t.due_date IS NOT NULL
@@ -284,9 +295,10 @@ async function listDueSoonTasks(user) {
 
 async function listProcessingTasks(user) {
   const sql = `
-      SELECT t.* , p.address as property_address
+      SELECT t.* , p.address as property_address, A.agency_name
       FROM "TASK" t
       JOIN "PROPERTY" p ON p.id = t.property_id
+      JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE t.status = 'PROCESSING'
         AND t.is_active = true
         AND p.user_id = $1
@@ -334,6 +346,7 @@ async function updateTask(taskId, fields) {
   const finalRepeat = fields.repeat_frequency ?? existing.repeat_frequency;
   const finalType = fields.type ?? existing.type;
   const finalStatus = fields.status ?? existing.status;
+  const finalAgency = fields.agency_id ?? existing.agency_id;
   // 计算 next_reminder
   let finalReminder = existing.next_reminder;
   if (fields.due_date) {
@@ -352,7 +365,8 @@ async function updateTask(taskId, fields) {
       next_reminder = $5,
       type = $6,
       status = $7
-    WHERE id = $8
+      agency_id = $8
+    WHERE id = $9
     RETURNING *;
   `;
 
@@ -365,6 +379,7 @@ async function updateTask(taskId, fields) {
     finalReminder,
     finalType,
     finalStatus,
+    finalAgency,
     taskId,
   ]);
   return rows[0];
