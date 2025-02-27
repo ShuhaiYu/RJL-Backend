@@ -6,8 +6,8 @@ module.exports = {
   // 创建联系人
   createContact: async (req, res, next) => {
     try {
-      const { name, phone, email, task_id } = req.body;
-      const newContact = await contactModel.createContact({ name, phone, email, task_id });
+      const { name, phone, email, property_id } = req.body;
+      const newContact = await contactModel.createContact({ name, phone, email, property_id });
       res.status(201).json({ message: "Contact created successfully", data: newContact });
     } catch (error) {
       next(error);

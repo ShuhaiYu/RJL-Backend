@@ -127,16 +127,23 @@ async function updateAgency(agencyId, fields) {
  *
  * @returns {Promise<Array>} 返回机构记录数组
  */
-async function listAgencies() {
-  const querySQL = `SELECT * FROM "AGENCY" ORDER BY id;`;
+async function listAgencies(search = "") {
+  let querySQL = `SELECT * FROM "AGENCY" WHERE is_active = true`;
+  let values = [];
+  if (search && search.trim() !== "") {
+    querySQL += " AND agency_name ILIKE $1";
+    values.push(`%${search}%`);
+  }
+  querySQL += " ORDER BY id;";
   try {
-    const { rows } = await pool.query(querySQL);
+    const { rows } = await pool.query(querySQL, values);
     return rows;
   } catch (error) {
     console.error("Error in listAgencies:", error);
     throw error;
   }
 }
+
 
 /**
  * 删除指定机构记录（软删除）

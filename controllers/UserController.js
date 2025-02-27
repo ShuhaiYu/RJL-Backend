@@ -93,7 +93,8 @@ module.exports = {
   listUsers: async (req, res, next) => {
     try {
       const user = await userModel.getUserById(req.user.user_id);
-      const users = await userModel.listUsers(user);
+      const search = req.query.search || "";
+      const users = await userModel.listUsers(user, search);
       res.status(200).json(users);
     } catch (error) {
       next(error);

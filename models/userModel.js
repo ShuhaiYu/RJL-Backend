@@ -147,32 +147,45 @@ async function deleteUser(user_id) {
  * @param {Object} requestingUser - 请求用户对象，需包含 id、role 及 agency_id（如适用）
  * @returns {Promise<Array>} 返回用户列表数组
  */
-async function listUsers(requestingUser) {
+async function listUsers(requestingUser, search = "") {
   try {
+    let query = "";
+    let values = [];
     if (requestingUser.role === 'superuser' || requestingUser.role === 'admin') {
-      // 超级管理员或 admin 可查看所有用户
-      const query = `SELECT * FROM "USER" WHERE is_active = true ORDER BY id;`;
-      const { rows } = await pool.query(query);
-      return rows;
+      query = `SELECT * FROM "USER" WHERE is_active = true`;
+      if (search && search.trim() !== "") {
+        query += " AND (name ILIKE $1 OR email ILIKE $1)";
+        values.push(`%${search}%`);
+      }
+      query += " ORDER BY id;";
     } else if (requestingUser.role === 'agency-admin') {
-      // 机构用户仅可查看同一机构内的用户
       if (!requestingUser.agency_id) {
         throw new Error('Agency user must have an agency_id');
       }
-      const query = `SELECT * FROM "USER" WHERE agency_id = $1 and is_active = true ORDER BY id;`;
-      const { rows } = await pool.query(query, [requestingUser.agency_id]);
-      return rows;
+      query = `SELECT * FROM "USER" WHERE agency_id = $1 and is_active = true`;
+      values.push(requestingUser.agency_id);
+      if (search && search.trim() !== "") {
+        query += " AND (name ILIKE $2 OR email ILIKE $2)";
+        values.push(`%${search}%`);
+      }
+      query += " ORDER BY id;";
     } else {
-      // 其他角色仅返回自身信息（或可根据需求调整权限逻辑）
-      const query = `SELECT * FROM "USER" WHERE id = $1 and is_active = true;`;
-      const { rows } = await pool.query(query, [requestingUser.id]);
-      return rows;
+      query = `SELECT * FROM "USER" WHERE id = $1 and is_active = true`;
+      values.push(requestingUser.id);
+      // 对于单个用户可以不加搜索条件，但也可加：
+      if (search && search.trim() !== "") {
+        query += " AND (name ILIKE $2 OR email ILIKE $2)";
+        values.push(`%${search}%`);
+      }
     }
+    const { rows } = await pool.query(query, values);
+    return rows;
   } catch (error) {
     console.error('Error in listUsers:', error);
     throw error;
   }
 }
+
 
 /**
  * Get user by email.

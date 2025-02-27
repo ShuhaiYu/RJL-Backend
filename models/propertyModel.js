@@ -98,38 +98,39 @@ async function getPropertyById(propertyId) {
  * @param {Object} requestingUser - 请求用户对象，需包含 role 和 agency_id（非 admin/superuser）
  * @returns {Promise<Array>} 返回房产记录数组
  */
-async function listProperties(requestingUser) {
+async function listProperties(requestingUser, search = "") {
   let querySQL;
   let values = [];
   if (requestingUser.role === 'admin' || requestingUser.role === 'superuser') {
-    querySQL = `
-      SELECT * FROM "PROPERTY"
-      WHERE is_active = true
-      ORDER BY id DESC;
-    `;
+    querySQL = `SELECT * FROM "PROPERTY" WHERE is_active = true`;
+    if (search && search.trim() !== "") {
+      querySQL += " AND address ILIKE $1";
+      values.push(`%${search}%`);
+    }
+    querySQL += " ORDER BY id DESC;";
   } else if (requestingUser.role === 'agency-admin') {
     const agencyUsers = await userModel.getUsersByAgencyId(requestingUser.agency_id);
     const userIds = agencyUsers.map((u) => u.id);
-    querySQL = `
-      SELECT *
-      FROM "PROPERTY"
-      WHERE is_active = true
-        AND user_id = ANY($1::int[])
-      ORDER BY id DESC
-    `;
+    querySQL = `SELECT * FROM "PROPERTY" WHERE is_active = true AND user_id = ANY($1::int[])`;
     values.push(userIds);
+    if (search && search.trim() !== "") {
+      querySQL += " AND address ILIKE $2";
+      values.push(`%${search}%`);
+    }
+    querySQL += " ORDER BY id DESC";
   } else {
-    // 非 admin/superuser用户：返回所属机构的房产
-    querySQL = `
-    SELECT * FROM "PROPERTY"
-    WHERE is_active = true AND user_id = $1
-    ORDER BY id DESC;
-    `;
+    querySQL = `SELECT * FROM "PROPERTY" WHERE is_active = true AND user_id = $1`;
     values.push(requestingUser.id);
+    if (search && search.trim() !== "") {
+      querySQL += " AND address ILIKE $2";
+      values.push(`%${search}%`);
+    }
+    querySQL += " ORDER BY id DESC;";
   }
   const { rows } = await pool.query(querySQL, values);
   return rows;
 }
+
 
 /**
  * 根据地址查询房产

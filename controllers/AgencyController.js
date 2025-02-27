@@ -115,7 +115,9 @@ module.exports = {
   // 列出所有机构
   listAgencies: async (req, res, next) => {
     try {
-      const agencies = await agencyModel.listAgencies();
+      const search = req.query.search || "";
+      const agencies = await agencyModel.listAgencies(search);
+      
       res.status(200).json(agencies);
     } catch (error) {
       next(error);

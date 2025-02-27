@@ -10,7 +10,7 @@ const pool = require("../config/db");
  * @param {string} param0.name - 联系人姓名
  * @param {string} param0.phone - 联系人电话
  * @param {string} param0.email - 联系人邮箱
- * @param {number} param0.task_id - 关联的任务 ID
+ * @param {number} param0.property_id - 关联的房产 ID
  * @returns {Promise<Object>} 返回新创建的联系人记录
  */
 async function createContact({ name, phone, email, property_id }) {

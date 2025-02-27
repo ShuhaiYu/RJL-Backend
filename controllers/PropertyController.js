@@ -117,7 +117,8 @@ module.exports = {
   listProperties: async (req, res, next) => {
     try {
       const user = await userModel.getUserById(req.user.user_id);
-      const properties = await propertyModel.listProperties(user);
+      const search = req.query.search || "";
+      const properties = await propertyModel.listProperties(user, search);
       // 如有需要，可以把机构信息附加到返回数据中
       for (let i = 0; i < properties.length; i++) {
         const owner = await userModel.getUserById(properties[i].user_id);
