@@ -15,6 +15,7 @@ const contactController = require("../controllers/ContactController");
 const emailController = require("../controllers/EmailController");
 const userPermissionController = require("../controllers/UserPermissionController");
 const taskFileController = require("../controllers/TaskFileController");
+const systemController = require("../controllers/SystemSettingsController");
 
 // 邮件监听器route
 router.post("/emails/process", emailController.createPropertyByEmail);
@@ -200,6 +201,22 @@ router.get(
   "/emails",
   // authMiddleware.requirePermission("read", "email"),
   emailController.listEmails
+);
+
+/* -------------------------------
+   System Setting Routes
+   说明：管理系统设置，例如api等
+--------------------------------- */
+router.get(
+  "/settings",
+  // authMiddleware.requirePermission("read", "setting"),
+  systemController.getSettings
+);
+
+router.put(
+  "/settings",
+  // authMiddleware.requirePermission("update", "setting"),
+  systemController.updateSettings
 );
 
 module.exports = router;

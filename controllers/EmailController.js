@@ -6,6 +6,33 @@ const contactModel = require("../models/contactModel");
 const userModel = require("../models/userModel");
 const agencyModel = require("../models/agencyModel");
 
+const axios = require("axios");
+const { getSystemSettings } = require("../models/systemSettingsModel");
+
+async function formatAddress(address) {
+  try {
+    const settings = await getSystemSettings();
+    if (!settings || !settings.google_map_key) {
+      throw new Error("Google Map Key not configured");
+    }
+    const key = settings.google_map_key;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${key}`;
+    const response = await axios.get(url);
+    if (response.data.status === "OK") {
+      // 返回格式化后的地址，取第一个结果
+      return response.data.results[0].formatted_address;
+    } else {
+      throw new Error(response.data.status);
+    }
+  } catch (error) {
+    console.error("formatAddress error:", error);
+    return address; // 出错时返回原地址
+  }
+}
+
+// test
+// formatAddress("123 Main St, Melbourne VIC 3000").then(console.log);
+
 /**
  * 从邮件正文中提取“租客”信息（tenantName / tenantPhone）
  * 兼容以下多种格式：
@@ -205,13 +232,16 @@ module.exports = {
       const createdList = [];
 
       for (const address of uniqueAddresses) {
+        // 先格式化地址
+        const formattedAddress = await formatAddress(address);
+
         // 查或创建 Property
-        let property = await propertyModel.getPropertyByAddress(address);
+        let property = await propertyModel.getPropertyByAddress(formattedAddress);
         if (property && property.length > 0) {
           property = property[0];
         } else {
           property = await propertyModel.createProperty({
-            address,
+            address: formattedAddress,
             user_id: user ? user.id : null,
             agency_id: agency.id, // 新增
           });
@@ -241,7 +271,7 @@ module.exports = {
         }
 
         const addressRecord = {
-          address,
+          address: formattedAddress,
           property,
           tasks: [],
           emails: [],
@@ -331,7 +361,7 @@ module.exports = {
 
         // 批量 updateTaskEmailId，把同一个 emailId 塞给所有新Task
         for (const newTask of addressRecord.tasks) {
-          await taskModel.updateTaskEmailId(newTask.id, newEmail.id);
+          await taskModel.updateTaskEmailId(newTask.id, usedEmail.id);
         }
 
         createdList.push(addressRecord);
