@@ -91,7 +91,7 @@ module.exports = {
   getAgencyDetail: async (req, res, next) => {
     try {
       const agencyId = req.params.id;
-      const agency = await agencyModel.getAgencyByAgencyId(agencyId);
+      const agency = await agencyModel.getAgencyByAgencyId(agencyId, { withProperties: true, withTasks: true });
       if (!agency) return res.status(404).json({ message: "Agency not found" });
       res.status(200).json(agency);
     } catch (error) {

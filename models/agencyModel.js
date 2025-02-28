@@ -40,49 +40,65 @@ async function createAgency({
 }
 
 /**
- * 根据机构 ID 获取机构信息及其房产信息
- *
- * @param {number} agencyId - 机构 ID
- * @returns {Promise<Object|null>} 返回机构记录，包含 properties 字段，如不存在则返回 null
+ * @param {number} agencyId
+ * @param {object} [options]
+ * @param {boolean} [options.withProperties] 是否需要返回 properties 数组
+ * @param {boolean} [options.withTasks] 是否需要返回 tasks 数组
  */
-async function getAgencyByAgencyId(agencyId) {
+async function getAgencyByAgencyId(agencyId, options = {}) {
+  const { withProperties = false, withTasks = false } = options;
+
+  // 1) 先定义基础 SELECT 只查 AGENCY 表
+  let selectFields = ['A.*'];
+  
+  // 2) 如果需要 properties，就增加一个子查询
+  if (withProperties) {
+    selectFields.push(`
+      (
+        SELECT COALESCE(json_agg(row_to_json(p)), '[]')
+        FROM "USER" u
+        JOIN "PROPERTY" p ON p.user_id = u.id
+        WHERE u.agency_id = A.id
+      ) AS properties
+    `);
+  }
+
+  // 3) 如果需要 tasks，就增加另一个子查询
+  if (withTasks) {
+    selectFields.push(`
+      (
+        SELECT COALESCE(json_agg(
+          jsonb_build_object(
+            'id', t.id,
+            'property_id', t.property_id,
+            'due_date', t.due_date,
+            'task_name', t.task_name,
+            'task_description', t.task_description,
+            'repeat_frequency', t.repeat_frequency,
+            'next_reminder', t.next_reminder,
+            'type', t.type,
+            'status', t.status,
+            'is_active', t.is_active,
+            'email_id', t.email_id,
+            'agency_id', t.agency_id,
+            'created_at', t.created_at,
+            'updated_at', t.updated_at
+          )
+        ), '[]')
+        FROM "TASK" t
+        WHERE t.agency_id = A.id
+      ) AS tasks
+    `);
+  }
+
+  // 4) 组合最终查询 SQL
   const querySQL = `
-      SELECT 
-        A.*, 
-        COALESCE(json_agg(DISTINCT P) FILTER (WHERE P.id IS NOT NULL), '[]') AS properties,
-        COALESCE(
-          json_agg(
-            DISTINCT jsonb_build_object(
-              'id', T.id,
-              'property_id', T.property_id,
-              'due_date', T.due_date,
-              'task_name', T.task_name,
-              'task_description', T.task_description,
-              'repeat_frequency', T.repeat_frequency,
-              'next_reminder', T.next_reminder,
-              'type', T.type,
-              'status', T.status,
-              'is_active', T.is_active,
-              'email_id', T.email_id,
-              'agency_id', T.agency_id,
-              'created_at', T.created_at,
-              'updated_at', T.updated_at,
-              'property_address', P.address  
-            )
-          ) FILTER (WHERE T.id IS NOT NULL),
-          '[]'
-        ) AS tasks
-      FROM "AGENCY" A
-      JOIN "USER" U ON A.id = U.agency_id
-      LEFT JOIN "PROPERTY" P ON U.id = P.user_id
-      LEFT JOIN "TASK" T ON P.id = T.property_id AND T.agency_id = A.id
-      WHERE A.id = $1
-      GROUP BY A.id;
-
-
-
-
+    SELECT 
+      ${selectFields.join(',\n')}
+    FROM "AGENCY" A
+    WHERE A.id = $1
   `;
+
   try {
     const { rows } = await pool.query(querySQL, [agencyId]);
     return rows[0] || null;
@@ -91,6 +107,7 @@ async function getAgencyByAgencyId(agencyId) {
     throw error;
   }
 }
+
 
 /**
  * 更新机构信息
