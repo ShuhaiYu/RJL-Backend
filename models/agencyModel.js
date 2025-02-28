@@ -197,18 +197,13 @@ async function getAgencyByUserId(userId) {
  * 如果是，返回对应 agency; 否则返回 null
  */
 async function getAgencyByWhiteListEmail(email) {
-  // 例如：email = "pm5@eighthquarter.com.au"
-  // 也可能只对比 domain => "eighthquarter.com.au"
-
   // 先看 AGENCY_WHITELIST
   const sql = `
     SELECT A.*
     FROM "AGENCY_WHITELIST" W
     JOIN "AGENCY" A ON W.agency_id = A.id
-    WHERE $1 LIKE '%' || W.email_pattern
-      AND A.is_active=true
-      -- 这里简单做 "endsWith()" 的效果
-      -- 也可以更严格: W.email_pattern = RIGHT($1, LENGTH(W.email_pattern))
+    WHERE W.email_address = $1
+      AND A.is_active = true
     LIMIT 1
   `;
   const { rows } = await pool.query(sql, [email]);
