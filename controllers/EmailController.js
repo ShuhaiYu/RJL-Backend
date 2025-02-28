@@ -250,24 +250,24 @@ module.exports = {
         // 5) 关键词 => tasksToCreate
         const textLower = textBody.toLowerCase();
         let tasksToCreate = [];
-        if (textLower.includes("safety check")) {
+
+        let hasTask = false;
+        if (textLower.includes("smoke")) {
+          tasksToCreate.push({ name: "smoke alarm", repeatYears: 1 });
+          hasTask = true;
+        }
+        if (textLower.includes("electric")) {
+          if (textLower.includes("gas")) {
+            tasksToCreate.push({ name: "gas & electric", repeatYears: 2 });
+          } else if (textLower.includes("electric")) {
+            tasksToCreate.push({ name: "electric", repeatYears: 2 });
+          }
+          hasTask = true;
+        }
+
+        if (!hasTask && textLower.includes("safety check")) {
           tasksToCreate.push({ name: "smoke alarm", repeatYears: 1 });
           tasksToCreate.push({ name: "gas & electric", repeatYears: 2 });
-        } else {
-          if (textLower.includes("smoke alarm")) {
-            tasksToCreate.push({ name: "smoke alarm", repeatYears: 1 });
-            if (textLower.includes("gas")) {
-              tasksToCreate.push({ name: "gas & electric", repeatYears: 2 });
-            } else if (textLower.includes("electric")) {
-              tasksToCreate.push({ name: "electric", repeatYears: 2 });
-            }
-          } else {
-            if (textLower.includes("gas")) {
-              tasksToCreate.push({ name: "gas & electric", repeatYears: 2 });
-            } else if (textLower.includes("electric")) {
-              tasksToCreate.push({ name: "electric", repeatYears: 2 });
-            }
-          }
         }
 
         const addressRecord = {
