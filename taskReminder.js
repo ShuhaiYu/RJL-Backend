@@ -71,7 +71,7 @@ async function sendReminders() {
     // 1) 确定收件人
     // 在开发环境写死
     // const toEmail = t.contact_email // 联系人邮箱
-    const toEmail = process.env.TEST_EMAIL; // 测试的邮箱
+    const toEmail = 'edgar@veiam.net'; // 测试的邮箱
 
     // 2) 发送邮件
     const subject = `Task Reminder: ${t.task_name}`;

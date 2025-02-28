@@ -259,7 +259,7 @@ module.exports = {
         if (textLower.includes("electric")) {
           if (textLower.includes("gas")) {
             tasksToCreate.push({ name: "gas & electric", repeatYears: 2 });
-          } else if (textLower.includes("electric")) {
+          } else {
             tasksToCreate.push({ name: "electric", repeatYears: 2 });
           }
           hasTask = true;
