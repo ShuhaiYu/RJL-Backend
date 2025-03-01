@@ -16,6 +16,12 @@ const emailController = require("../controllers/EmailController");
 const userPermissionController = require("../controllers/UserPermissionController");
 const taskFileController = require("../controllers/TaskFileController");
 const systemController = require("../controllers/SystemSettingsController");
+const {
+  getAgencyWhitelist,
+  createAgencyWhitelist,
+  updateAgencyWhitelist,
+  deleteAgencyWhitelist,
+} = require("../controllers/agencyWhitelistController");
 
 // 邮件监听器route
 router.post("/emails/process", emailController.createPropertyByEmail);
@@ -54,10 +60,10 @@ router.put(
   userPermissionController.updateUserPermissions
 );
 router.delete(
-   "/users/:id",
-   authMiddleware.requirePermission("delete", "user"),
-   userController.deleteUser
-)
+  "/users/:id",
+  authMiddleware.requirePermission("delete", "user"),
+  userController.deleteUser
+);
 
 /* -------------------------------
    Agency Management Routes
@@ -82,6 +88,31 @@ router.put(
   "/agencies/:id",
   authMiddleware.requirePermission("update", "agency"),
   agencyController.updateAgency
+);
+
+/* -------------------------------
+   Agency WhiteList Management Routes
+   说明：管理机构白名单，例如创建、查询、更新白名单
+--------------------------------- */
+router.get(
+  "/agencies/:agencyId/whitelist",
+  authMiddleware.requirePermission("read", "agency"),
+  getAgencyWhitelist
+);
+router.post(
+  "/agencies/:agencyId/whitelist",
+  authMiddleware.requirePermission("create", "agency"),
+  createAgencyWhitelist
+);
+router.put(
+  "/agencies/:agencyId/whitelist/:whitelistId",
+  authMiddleware.requirePermission("update", "agency"),
+  updateAgencyWhitelist
+);
+router.delete(
+  "/agencies/:agencyId/whitelist/:whitelistId",
+  authMiddleware.requirePermission("delete", "agency"),
+  deleteAgencyWhitelist
 );
 
 /* -------------------------------
@@ -149,19 +180,27 @@ router.delete(
   taskController.deleteTask
 );
 
-
 // 创建上传接口
-router.post("/tasks/:taskId/files", upload.single("file"), taskFileController.uploadTaskFile);
+router.post(
+  "/tasks/:taskId/files",
+  upload.single("file"),
+  taskFileController.uploadTaskFile
+);
 
 // 获取文件列表接口
 router.get("/tasks/:taskId/files", taskFileController.getTaskFiles);
 
 // 删除文件接口
-router.delete("/tasks/:taskId/files/:fileId", taskFileController.deleteTaskFile);
+router.delete(
+  "/tasks/:taskId/files/:fileId",
+  taskFileController.deleteTaskFile
+);
 
 // 获取预签名URL
-router.get("/tasks/:taskId/files/:fileId/download", taskFileController.getFileSignedUrl);
-
+router.get(
+  "/tasks/:taskId/files/:fileId/download",
+  taskFileController.getFileSignedUrl
+);
 
 /* -------------------------------
    Contact Management Routes
