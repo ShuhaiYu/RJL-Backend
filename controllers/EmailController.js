@@ -16,7 +16,9 @@ async function formatAddress(address) {
       throw new Error("Google Map Key not configured");
     }
     const key = settings.google_map_key;
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${key}`;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+      address
+    )}&key=${key}`;
     const response = await axios.get(url);
     if (response.data.status === "OK") {
       // 返回格式化后的地址，取第一个结果
@@ -208,6 +210,28 @@ module.exports = {
         });
       }
 
+      // 如果 user 不存在，但 agency 存在 => 走“绑定 agency-admin账号”
+      if (!user) {
+        // 查找这个 agency 下是否有“agency-admin”角色
+        const agencyAdmins = await userModel.getUsersByAgencyIdAndRole(
+          agency.id,
+          "agency-admin"
+        );
+
+        if (agencyAdmins.length > 0) {
+          // 选第一个 agency-admin（或者根据业务逻辑选特定优先级）
+          user = agencyAdmins[0];
+        } else {
+          // 如果确实找不到 agency-admin
+          // 你可以再找别的角色（like 'admin'）或干脆报错
+          return res.status(200).json({
+            message:
+              "No agency-admin user found for this agency. Cannot bind property to user_id.",
+            createdList: [],
+          });
+        }
+      }
+
       // 2) 提取地址
       const addressRegex =
         /\b\d+[A-Za-z\/]*[\w'\- ]*?(?:,\s*)?[A-Za-z'\- ]+(?:,\s*)?(VIC|NSW|QLD|ACT|TAS|NT|WA)\s*\d{4}\b/gi;
@@ -236,7 +260,9 @@ module.exports = {
         const formattedAddress = await formatAddress(address);
 
         // 查或创建 Property
-        let property = await propertyModel.getPropertyByAddress(formattedAddress);
+        let property = await propertyModel.getPropertyByAddress(
+          formattedAddress
+        );
         if (property && property.length > 0) {
           property = property[0];
         } else {

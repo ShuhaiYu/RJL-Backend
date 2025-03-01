@@ -101,7 +101,6 @@ router.get(
 );
 router.post(
   "/agencies/:agencyId/whitelist",
-  authMiddleware.requirePermission("create", "agency"),
   createAgencyWhitelist
 );
 router.put(

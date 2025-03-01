@@ -26,7 +26,7 @@ const transporter = nodemailer.createTransport({
  */
 async function findTasksToRemind() {
   const today = dayjs().format("YYYY-MM-DD");
-  const sixtyDaysEarly = dayjs().subtract(60, "day").format("YYYY-MM-DD");
+  const sixtyDaysEarly = dayjs().subtract(2, "month").format("YYYY-MM-DD");
 
   const sql = `
     SELECT
@@ -67,24 +67,32 @@ async function sendReminders() {
   }
 
   for (const t of tasks) {
-    // 1) 确定收件人
-    // 在开发环境写死
-    // const toEmail = t.contact_email // 联系人邮箱
-    const toEmail = t.user_email || process.env.TEST_EMAIL; // 测试的邮箱
+    const toEmail = t.user_email || process.env.TEST_EMAIL; // 真实环境用 t.user_email；测试环境可以强制用 TEST_EMAIL
+    
+    // 这里假设你的前端访问链接是 /property/tasks/:taskId
+    // 如果你有线上域名，举例可写成：`https://yourdomain.com/property/tasks/${t.id}`
+    // 或者使用一个 .env 配置项如 process.env.APP_BASE_URL
+    const taskDetailURL = `${process.env.FRONTEND_URL}/property/tasks/${t.id}`;
 
-    // 2) 发送邮件
+    // 拼接邮件内容
     const subject = `Task Reminder: ${t.task_name}`;
     const textBody =
-      `Hello ${t.contact_name || "User"},\n\n` +
-      `This is a reminder for your task: ${t.task_name}.\n` +
-      `Due date: ${dayjs(t.due_date).format("YYYY-MM-DD HH:mm")}\n` +
-      (t.property_name
-        ? `Property: ${t.property_name}${
-            t.property_address ? ", " + t.property_address : ""
-          }\n`
+      `Hello ${t.user_name || "User"},\n\n` +
+      `You have an INCOMPLETE task that needs attention:\n` +
+      `------------------------------------------------------\n` +
+      `Task Name: ${t.task_name}\n` +
+      `Task Type: ${t.type || "N/A"}\n` +
+      `Property Address: ${t.property_address || "N/A"}\n` +
+      `Due Date: ${
+        t.due_date ? dayjs(t.due_date).format("YYYY-MM-DD HH:mm") : "N/A"
+      }\n` +
+      (t.task_description
+        ? `Description: ${t.task_description}\n`
         : "") +
-      (t.task_description ? `Details: ${t.task_description}\n` : "") +
-      "\nBest regards,\nRJL System";
+      `------------------------------------------------------\n\n` +
+      `To view or update this task, please click the link below:\n` +
+      `${taskDetailURL}\n\n` +
+      "Best regards,\nRJL System";
 
     try {
       await transporter.sendMail({

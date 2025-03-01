@@ -214,6 +214,29 @@ async function getUsersByAgencyId(agencyId) {
   }
 }
 
+/**
+ * 获取指定 agency 下、指定角色的用户列表
+ * @param {number} agencyId
+ * @param {string} role
+ * @returns {Promise<Array>} 返回符合条件的用户数组
+ */
+async function getUsersByAgencyIdAndRole(agencyId, role) {
+  const sql = `
+    SELECT *
+    FROM "USER"
+    WHERE agency_id = $1
+      AND role = $2
+      AND is_active = true -- 如果需要只查“活跃用户”，可加上这行
+  `;
+  try {
+    const { rows } = await pool.query(sql, [agencyId, role]);
+    return rows;
+  } catch (error) {
+    console.error("Error in getUsersByAgencyIdAndRole:", error);
+    throw error;
+  }
+}
+
 
 module.exports = {
   createUser,
@@ -223,4 +246,5 @@ module.exports = {
   listUsers,
   getUserByEmail,
   getUsersByAgencyId,
+  getUsersByAgencyIdAndRole,
 };
