@@ -333,7 +333,7 @@ module.exports = {
             repeat_frequency: repeatFrequencyStr,
             next_reminder: null,
             type: t.name,
-            status: "INCOMPLETE",
+            status: "UNKNOWN",
             email_id: null, // 之后更新
             agency_id: agency.id, // 新增
           });
