@@ -25,36 +25,35 @@ const transporter = nodemailer.createTransport({
  *   2. 如果有 repeat_frequency，需要再判断 next_reminder 等（示例中简化处理）
  */
 async function findTasksToRemind() {
-  // 注意: dayjs().format('YYYY-MM-DD') 仅比较日期部分
   const today = dayjs().format("YYYY-MM-DD");
-  console.log(today);
-
   const sixtyDaysEarly = dayjs().subtract(60, "day").format("YYYY-MM-DD");
-    console.log(sixtyDaysEarly);
-    
+
   const sql = `
-  SELECT
-    t.id,
-    t.task_name,
-    t.task_description,
-    t.due_date,
-    t.repeat_frequency,
-    t.next_reminder,
+    SELECT
+      t.id,
+      t.task_name,
+      t.task_description,
+      t.due_date,
+      t.repeat_frequency,
+      t.next_reminder,
+      
+      -- 房产信息
+      p.address AS property_address,
 
-    c.name AS contact_name,
-    c.email AS contact_email,
+      -- 用户（房产拥有者/关联者）的邮箱
+      u.email AS user_email,
+      u.name AS user_name  -- 如果在user表有名字字段，可以取出来当收件人名字
 
-    p.address AS property_address
+    FROM "TASK" t
+    JOIN "PROPERTY" p ON t.property_id = p.id
+    JOIN "USER" u ON p.user_id = u.id
 
-  FROM "TASK" t
-  LEFT JOIN "PROPERTY" p ON t.property_id = p.id
-  LEFT JOIN "CONTACT" c ON p.id = c.property_id
-  WHERE to_char(t.due_date, 'YYYY-MM-DD') IN ($1, $2)
-  or to_char(t.next_reminder, 'YYYY-MM-DD') IN ($1, $2)
-`;
+    WHERE to_char(t.due_date, 'YYYY-MM-DD') IN ($1, $2)
+       OR to_char(t.next_reminder, 'YYYY-MM-DD') IN ($1, $2)
+  `;
 
   const { rows } = await pool.query(sql, [today, sixtyDaysEarly]);
-  return rows;
+  return rows; // 这里返回的每一行就包含 user_email, property_address 等
 }
 
 /**
@@ -71,7 +70,7 @@ async function sendReminders() {
     // 1) 确定收件人
     // 在开发环境写死
     // const toEmail = t.contact_email // 联系人邮箱
-    const toEmail = process.env.TEST_EMAIL; // 测试的邮箱
+    const toEmail = t.user_email || process.env.TEST_EMAIL; // 测试的邮箱
 
     // 2) 发送邮件
     const subject = `Task Reminder: ${t.task_name}`;
