@@ -48,8 +48,8 @@ async function findTasksToRemind() {
     JOIN "PROPERTY" p ON t.property_id = p.id
     JOIN "USER" u ON p.user_id = u.id
 
-    WHERE to_char(t.due_date, 'YYYY-MM-DD') IN ($1, $2)
-       OR to_char(t.next_reminder, 'YYYY-MM-DD') IN ($1, $2)
+    WHERE t.status = 'INCOMPLETE'
+       AND to_char(t.due_date, 'YYYY-MM-DD') IN ($1, $2)
   `;
 
   const { rows } = await pool.query(sql, [today, sixtyDaysEarly]);
