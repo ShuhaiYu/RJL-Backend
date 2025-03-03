@@ -49,11 +49,11 @@ module.exports = {
     }
   },
 
-  // 列出所有任务（或仅列出今日任务）
+  // 列出所有任务
   listTasks: async (req, res, next) => {
     try {
       const user = await userModel.getUserById(req.user.user_id);
-      const tasks = await taskModel.listTasks(user);
+      const tasks = await taskModel.listTasks(user, req.query);
       res.status(200).json(tasks);
     } catch (error) {
       next(error);

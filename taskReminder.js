@@ -22,7 +22,6 @@ const transporter = nodemailer.createTransport({
  * 示例： 查找需要提醒的任务
  * 逻辑：
  *   1. 任务的 due_date 是 “今天” 或 “60天前”
- *   2. 如果有 repeat_frequency，需要再判断 next_reminder 等（示例中简化处理）
  */
 async function findTasksToRemind() {
   const today = dayjs().format("YYYY-MM-DD");
@@ -35,7 +34,6 @@ async function findTasksToRemind() {
       t.task_description,
       t.due_date,
       t.repeat_frequency,
-      t.next_reminder,
       
       -- 房产信息
       p.address AS property_address,

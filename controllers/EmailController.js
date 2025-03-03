@@ -319,7 +319,7 @@ module.exports = {
         for (const t of tasksToCreate) {
           const repeatFrequencyStr =
             t.repeatYears === 1
-              ? "yearly"
+              ? "1 year"
               : t.repeatYears > 1
               ? `${t.repeatYears} years`
               : null;
@@ -331,7 +331,6 @@ module.exports = {
             task_name: t.name,
             task_description: `Auto-created from email: ${subject || ""}`,
             repeat_frequency: repeatFrequencyStr,
-            next_reminder: null,
             type: t.name,
             status: "INCOMPLETE",
             email_id: null, // 之后更新

@@ -75,7 +75,6 @@ async function getAgencyByAgencyId(agencyId, options = {}) {
             'task_name', t.task_name,
             'task_description', t.task_description,
             'repeat_frequency', t.repeat_frequency,
-            'next_reminder', t.next_reminder,
             'type', t.type,
             'status', t.status,
             'is_active', t.is_active,

@@ -20,26 +20,16 @@ async function createTask({
   task_name,
   task_description = null,
   repeat_frequency = null,
-  next_reminder = null,
   type = null,
   status = null,
   email_id = null,
   agency_id = null,
 }) {
-  // 如果没有传入 next_reminder，则自动生成
-  if (!next_reminder) {
-    if (due_date) {
-      // 如果提供了截止日期，则提醒时间设为截止日期前 60 天
-      next_reminder = dayjs(due_date).subtract(60, "day").toISOString();
-    } else {
-      // 如果没有截止日期，则默认提醒时间设为当前日期的 60 天前
-      next_reminder = dayjs().subtract(60, "day").toISOString();
-    }
-  }
+  
 
   const insertSQL = `
     INSERT INTO "TASK" 
-      (property_id, due_date, task_name, task_description, repeat_frequency, next_reminder, type, status, email_id, agency_id, is_active)
+      (property_id, due_date, task_name, task_description, repeat_frequency, type, status, email_id, agency_id, is_active)
     VALUES 
       ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
     RETURNING *;
@@ -50,7 +40,6 @@ async function createTask({
     task_name,
     task_description,
     repeat_frequency,
-    next_reminder,
     type,
     status,
     email_id,
@@ -72,8 +61,8 @@ async function getTaskById(taskId) {
       T.task_name,
       T.task_description,
       T.due_date,
+      T.inspection_date,
       T.repeat_frequency,
-      T.next_reminder,
       T.property_id,
       T.status,
       T.type,
@@ -113,8 +102,8 @@ async function getTaskById(taskId) {
     task_name: first.task_name,
     task_description: first.task_description,
     due_date: first.due_date,
+    inspection_date: first.inspection_date,
     repeat_frequency: first.repeat_frequency,
-    next_reminder: first.next_reminder,
     status: first.status,
     type: first.type,
     property_id: first.property_id,
@@ -164,21 +153,39 @@ async function getTaskById(taskId) {
  * - 若请求用户为 admin 或 superuser，返回所有激活的任务；
  * - 否则，仅返回其所属机构下的任务（即房产所属机构与请求用户的 agency_id 匹配）
  *
+ * 同时支持通过 status 和 type 过滤任务，例如：tasks?status=UNKNOWN
+ *
  * @param {Object} requestingUser - 请求用户对象，需包含 role 和（对于非 admin/superuser）agency_id
+ * @param {Object} filters - 查询过滤器，可包含 status 和 type
  * @returns {Promise<Array>} 返回任务记录数组
  */
-async function listTasks(requestingUser) {
+async function listTasks(requestingUser, filters = {}) {
+  const { status, type } = filters;
   let querySQL = "";
   let values = [];
+
   if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
     querySQL = `
       SELECT T.*, P.address as property_address, A.agency_name
       FROM "TASK" T
       LEFT JOIN "PROPERTY" P ON T.property_id = P.id
       LEFT JOIN "AGENCY" A ON T.agency_id = A.id
-      WHERE T.is_active = true
-      ORDER BY T.id DESC;
+      WHERE T.is_active = true AND T.status <> 'COMPLETED' AND T.status <> 'HISTORY'
     `;
+    // 如果提供了 status，则追加过滤条件
+    if (status) {
+      const normalizedStatus = status.replace(/_/g, ' ');
+      querySQL += ` AND T.status = $${values.length + 1}`;
+      values.push(normalizedStatus);
+    }
+    // 如果提供了 type，则追加过滤条件
+    if (type) {
+      const normalizedType = type.replace(/_/g, ' ');
+      querySQL += ` AND T.type = $${values.length + 1}`;
+      values.push(normalizedType);
+    }
+    querySQL += ` ORDER BY T.id DESC;`;
+
   } else if (requestingUser.role === "agency-admin") {
     if (!requestingUser.agency_id) {
       throw new Error("Agency user must have an agency_id");
@@ -191,10 +198,21 @@ async function listTasks(requestingUser) {
       JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE T.is_active = true
         AND U.agency_id = $1
-        AND T.status <> 'UNKNOWN'
-      ORDER BY T.id DESC;
     `;
     values.push(requestingUser.agency_id);
+    // 如果 query 参数中指定了 status，则使用该条件；否则使用默认过滤条件
+    if (status) {
+      querySQL += ` AND T.status = $${values.length + 1}`;
+      values.push(status);
+    } else {
+      querySQL += ` AND T.status <> 'UNKNOWN'`;
+    }
+    if (type) {
+      querySQL += ` AND T.type = $${values.length + 1}`;
+      values.push(type);
+    }
+    querySQL += ` ORDER BY T.id DESC;`;
+
   } else {
     if (!requestingUser.agency_id) {
       throw new Error("Non-admin user must have an agency_id");
@@ -206,14 +224,24 @@ async function listTasks(requestingUser) {
       LEFT JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE T.is_active = true 
         AND P.user_id = $1
-        AND T.status <> 'UNKNOWN'
-      ORDER BY T.id DESC;
     `;
     values.push(requestingUser.id);
+    if (status) {
+      querySQL += ` AND T.status = $${values.length + 1}`;
+      values.push(status);
+    } else {
+      querySQL += ` AND T.status <> 'UNKNOWN'`;
+    }
+    if (type) {
+      querySQL += ` AND T.type = $${values.length + 1}`;
+      values.push(type);
+    }
+    querySQL += ` ORDER BY T.id DESC;`;
   }
   const { rows } = await pool.query(querySQL, values);
   return rows;
 }
+
 
 async function listTodayTasks(requestingUser) {
   let tasks = [];
@@ -226,7 +254,7 @@ async function listTodayTasks(requestingUser) {
       JOIN "PROPERTY" p ON t.property_id = p.id
       JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE t.is_active = true
-        AND t.next_reminder <= (NOW() + INTERVAL '3 months')
+        AND t.due_date <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'COMPLETED'
       ORDER BY t.id DESC
     `;
@@ -252,7 +280,7 @@ async function listTodayTasks(requestingUser) {
       JOIN "PROPERTY" p ON t.property_id = p.id
       JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE t.is_active = true
-        AND t.next_reminder <= (NOW() + INTERVAL '3 months')
+        AND t.due_date <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'COMPLETED'
         AND p.user_id = ANY($1::int[])
       ORDER BY t.id DESC
@@ -267,7 +295,7 @@ async function listTodayTasks(requestingUser) {
       JOIN "PROPERTY" p ON t.property_id = p.id
       JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE t.is_active = true
-        AND t.next_reminder <= (NOW() + INTERVAL '3 months')
+        AND t.due_date <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'COMPLETED'
         AND p.user_id = $1
       ORDER BY t.id DESC
@@ -346,17 +374,13 @@ async function updateTask(taskId, fields) {
 
   // 2) 合并：若 fields.xxx 不存在，就用 existing.xxx
   const finalDueDate = fields.due_date ?? existing.due_date;
+  const finalInspectionDate = fields.inspection_date ?? existing.inspection_date;
   const finalTaskName = fields.task_name ?? existing.task_name;
   const finalDescription = fields.task_description ?? existing.task_description;
   const finalRepeat = fields.repeat_frequency ?? existing.repeat_frequency;
   const finalType = fields.type ?? existing.type;
   const finalStatus = fields.status ?? existing.status;
   const finalAgency = fields.agency_id ?? existing.agency_id;
-  // 计算 next_reminder
-  let finalReminder = existing.next_reminder;
-  if (fields.due_date) {
-    finalReminder = dayjs(fields.due_date).subtract(30, "day").toISOString();
-  }
 
   // 3) 构造 SQL
   const updateSQL = `
@@ -366,7 +390,7 @@ async function updateTask(taskId, fields) {
       task_name = $2,
       task_description = $3,
       repeat_frequency = $4,
-      next_reminder = $5,
+      inspection_date = $5,
       type = $6,
       status = $7,
       agency_id = $8
@@ -380,7 +404,7 @@ async function updateTask(taskId, fields) {
     finalTaskName,
     finalDescription,
     finalRepeat,
-    finalReminder,
+    finalInspectionDate,
     finalType,
     finalStatus,
     finalAgency,
