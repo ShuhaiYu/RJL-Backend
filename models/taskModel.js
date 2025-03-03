@@ -184,7 +184,7 @@ async function listTasks(requestingUser, filters = {}) {
       querySQL += ` AND T.type = $${values.length + 1}`;
       values.push(normalizedType);
     }
-    querySQL += ` ORDER BY T.id DESC;`;
+    querySQL += ` ORDER BY T.updated_at DESC;`;
 
   } else if (requestingUser.role === "agency-admin") {
     if (!requestingUser.agency_id) {
@@ -211,7 +211,7 @@ async function listTasks(requestingUser, filters = {}) {
       querySQL += ` AND T.type = $${values.length + 1}`;
       values.push(type);
     }
-    querySQL += ` ORDER BY T.id DESC;`;
+    querySQL += ` ORDER BY T.updated_at DESC;`;
 
   } else {
     if (!requestingUser.agency_id) {
@@ -236,7 +236,7 @@ async function listTasks(requestingUser, filters = {}) {
       querySQL += ` AND T.type = $${values.length + 1}`;
       values.push(type);
     }
-    querySQL += ` ORDER BY T.id DESC;`;
+    querySQL += ` ORDER BY T.updated_at DESC;`;
   }
   const { rows } = await pool.query(querySQL, values);
   return rows;
@@ -256,7 +256,7 @@ async function listTodayTasks(requestingUser) {
       WHERE t.is_active = true
         AND t.due_date <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'COMPLETED'
-      ORDER BY t.id DESC
+      ORDER BY T.updated_at DESC
     `;
     const { rows } = await pool.query(sqlAdmin);
     tasks = rows;
@@ -283,7 +283,7 @@ async function listTodayTasks(requestingUser) {
         AND t.due_date <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'COMPLETED'
         AND p.user_id = ANY($1::int[])
-      ORDER BY t.id DESC
+      ORDER BY T.updated_at DESC
     `;
     const { rows } = await pool.query(sqlAgencyAdmin, [userIds]);
     tasks = rows;
@@ -298,7 +298,7 @@ async function listTodayTasks(requestingUser) {
         AND t.due_date <= (NOW() + INTERVAL '3 months')
         AND t.status <> 'COMPLETED'
         AND p.user_id = $1
-      ORDER BY t.id DESC
+      ORDER BY T.updated_at DESC
     `;
     const { rows } = await pool.query(sqlAgencyUser, [requestingUser.id]);
     tasks = rows;
