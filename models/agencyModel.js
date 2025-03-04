@@ -139,18 +139,77 @@ async function updateAgency(agencyId, fields) {
 }
 
 /**
- * 列出所有机构记录
+ * 列出所有机构记录及相关指标：
+ * - total_users: 机构下的用户数量
+ * - total_properties: 机构下的房产数量（通过 property.user_id 与 user.agency_id 关联）
+ * - total_unknown_job_orders: 同一房产中状态为 UNKNOWN 的任务（只计一次）
+ * - total_incomplete_job_orders: 状态为 INCOMPLETE 的任务数量
+ * - total_processing_job_orders: 状态为 PROCESSING 的任务数量
+ * - total_due_soon_job_orders: 状态为 DUE SOON 的任务数量
+ * - total_expired_job_orders: 状态为 EXPIRED 的任务数量
  *
+ * @param {string} search - 搜索关键字，用于机构名称模糊匹配
  * @returns {Promise<Array>} 返回机构记录数组
  */
 async function listAgencies(search = "") {
-  let querySQL = `SELECT * FROM "AGENCY" WHERE is_active = true`;
+  let querySQL = `
+    SELECT 
+      a.*,
+      (SELECT COUNT(*) FROM "USER" u WHERE u.agency_id = a.id) AS total_users,
+      (SELECT COUNT(*) 
+         FROM "PROPERTY" p 
+         JOIN "USER" u ON p.user_id = u.id
+         WHERE u.agency_id = a.id) AS total_properties,
+      (SELECT COUNT(DISTINCT p.id)
+         FROM "TASK" t
+         JOIN "PROPERTY" p ON t.property_id = p.id
+         JOIN "USER" u ON p.user_id = u.id
+         WHERE t.status = 'UNKNOWN'
+           AND u.agency_id = a.id
+           AND t.is_active = true
+      ) AS total_unknown_job_orders,
+      (SELECT COUNT(*) 
+         FROM "TASK" t
+         JOIN "PROPERTY" p ON t.property_id = p.id
+         JOIN "USER" u ON p.user_id = u.id
+         WHERE t.status = 'INCOMPLETE'
+           AND u.agency_id = a.id
+           AND t.is_active = true
+      ) AS total_incomplete_job_orders,
+      (SELECT COUNT(*) 
+         FROM "TASK" t
+         JOIN "PROPERTY" p ON t.property_id = p.id
+         JOIN "USER" u ON p.user_id = u.id
+         WHERE t.status = 'PROCESSING'
+           AND u.agency_id = a.id
+           AND t.is_active = true
+      ) AS total_processing_job_orders,
+      (SELECT COUNT(*) 
+         FROM "TASK" t
+         JOIN "PROPERTY" p ON t.property_id = p.id
+         JOIN "USER" u ON p.user_id = u.id
+         WHERE t.status = 'DUE SOON'
+           AND u.agency_id = a.id
+           AND t.is_active = true
+      ) AS total_due_soon_job_orders,
+      (SELECT COUNT(*) 
+         FROM "TASK" t
+         JOIN "PROPERTY" p ON t.property_id = p.id
+         JOIN "USER" u ON p.user_id = u.id
+         WHERE t.status = 'EXPIRED'
+           AND u.agency_id = a.id
+           AND t.is_active = true
+      ) AS total_expired_job_orders
+    FROM "AGENCY" a
+    WHERE a.is_active = true
+  `;
   let values = [];
   if (search && search.trim() !== "") {
-    querySQL += " AND agency_name ILIKE $1";
+    querySQL += " AND a.agency_name ILIKE $1";
     values.push(`%${search}%`);
   }
-  querySQL += " ORDER BY id;";
+  querySQL += " ORDER BY a.id;";
+  
   try {
     const { rows } = await pool.query(querySQL, values);
     return rows;
