@@ -141,8 +141,11 @@ async function deleteUser(user_id) {
  * 
  * 根据请求用户的角色返回不同范围的用户列表：
  * - 如果请求用户是 superuser 或 admin，返回所有用户；
- * - 如果请求用户是 agency，则只返回同一机构（agency_id）的用户；
+ * - 如果请求用户是 agency-admin，则只返回同一机构（agency_id）的用户；
  * - 其他角色（或未明确授权）的用户，默认只返回自身信息。
+ * 
+ * 同时通过 LEFT JOIN "AGENCY" 表返回 agency_name，
+ * 注意部分用户可能没有 agency_id。
  * 
  * @param {Object} requestingUser - 请求用户对象，需包含 id、role 及 agency_id（如适用）
  * @returns {Promise<Array>} 返回用户列表数组
@@ -152,29 +155,43 @@ async function listUsers(requestingUser, search = "") {
     let query = "";
     let values = [];
     if (requestingUser.role === 'superuser' || requestingUser.role === 'admin') {
-      query = `SELECT * FROM "USER" WHERE is_active = true`;
+      query = `
+        SELECT u.*, a.agency_name 
+        FROM "USER" u 
+        LEFT JOIN "AGENCY" a ON u.agency_id = a.id
+        WHERE u.is_active = true
+      `;
       if (search && search.trim() !== "") {
-        query += " AND (name ILIKE $1 OR email ILIKE $1)";
+        query += " AND (u.name ILIKE $1 OR u.email ILIKE $1)";
         values.push(`%${search}%`);
       }
-      query += " ORDER BY id;";
+      query += " ORDER BY u.id;";
     } else if (requestingUser.role === 'agency-admin') {
       if (!requestingUser.agency_id) {
         throw new Error('Agency user must have an agency_id');
       }
-      query = `SELECT * FROM "USER" WHERE agency_id = $1 and is_active = true`;
+      query = `
+        SELECT u.*, a.agency_name 
+        FROM "USER" u 
+        LEFT JOIN "AGENCY" a ON u.agency_id = a.id
+        WHERE u.agency_id = $1 AND u.is_active = true
+      `;
       values.push(requestingUser.agency_id);
       if (search && search.trim() !== "") {
-        query += " AND (name ILIKE $2 OR email ILIKE $2)";
+        query += " AND (u.name ILIKE $2 OR u.email ILIKE $2)";
         values.push(`%${search}%`);
       }
-      query += " ORDER BY id;";
+      query += " ORDER BY u.id;";
     } else {
-      query = `SELECT * FROM "USER" WHERE id = $1 and is_active = true`;
+      query = `
+        SELECT u.*, a.agency_name 
+        FROM "USER" u 
+        LEFT JOIN "AGENCY" a ON u.agency_id = a.id
+        WHERE u.id = $1 AND u.is_active = true
+      `;
       values.push(requestingUser.id);
-      // 对于单个用户可以不加搜索条件，但也可加：
       if (search && search.trim() !== "") {
-        query += " AND (name ILIKE $2 OR email ILIKE $2)";
+        query += " AND (u.name ILIKE $2 OR u.email ILIKE $2)";
         values.push(`%${search}%`);
       }
     }
@@ -185,6 +202,7 @@ async function listUsers(requestingUser, search = "") {
     throw error;
   }
 }
+
 
 
 /**
