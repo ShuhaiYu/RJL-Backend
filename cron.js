@@ -1,6 +1,8 @@
 // cron.js
 const cron = require("node-cron");
 const { sendReminders } = require("./taskReminder"); // 引用后面会写的逻辑文件
+const { updateExpiredTasks } = require("./taskStatusUpdater"); // 引用更新状态的逻辑
+
 
 /**
  * setupCronJobs
@@ -11,9 +13,13 @@ function setupCronJobs() {
   cron.schedule("0 9 * * *", async () => {
     console.log("[CRON] Running daily tasks at 09:00...");
     try {
+      // 1) 发送任务提醒
       await sendReminders();
+
+      // 2) 更新过了 due_date 并且状态为 "DUE SOON" 的任务为 "EXPIRED"
+      await updateExpiredTasks();
     } catch (err) {
-      console.error("[CRON] sendReminders error:", err);
+      console.error("[CRON] daily cron job error:", err);
     }
   },
   {
