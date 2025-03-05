@@ -25,8 +25,6 @@ async function createTask({
   email_id = null,
   agency_id = null,
 }) {
-  
-
   const insertSQL = `
     INSERT INTO "TASK" 
       (property_id, due_date, task_name, task_description, repeat_frequency, type, status, email_id, agency_id, is_active)
@@ -174,18 +172,17 @@ async function listTasks(requestingUser, filters = {}) {
     `;
     // 如果提供了 status，则追加过滤条件
     if (status) {
-      const normalizedStatus = status.replace(/_/g, ' ');
+      const normalizedStatus = status.replace(/_/g, " ");
       querySQL += ` AND T.status = $${values.length + 1}`;
       values.push(normalizedStatus);
     }
     // 如果提供了 type，则追加过滤条件
     if (type) {
-      const normalizedType = type.replace(/_/g, ' ');
+      const normalizedType = type.replace(/_/g, " ");
       querySQL += ` AND T.type = $${values.length + 1}`;
       values.push(normalizedType);
     }
     querySQL += ` ORDER BY T.updated_at DESC;`;
-
   } else if (requestingUser.role === "agency-admin") {
     if (!requestingUser.agency_id) {
       throw new Error("Agency user must have an agency_id");
@@ -212,7 +209,6 @@ async function listTasks(requestingUser, filters = {}) {
       values.push(type);
     }
     querySQL += ` ORDER BY T.updated_at DESC;`;
-
   } else {
     if (!requestingUser.agency_id) {
       throw new Error("Non-admin user must have an agency_id");
@@ -241,7 +237,6 @@ async function listTasks(requestingUser, filters = {}) {
   const { rows } = await pool.query(querySQL, values);
   return rows;
 }
-
 
 async function listTodayTasks(requestingUser) {
   let tasks = [];
@@ -373,8 +368,12 @@ async function updateTask(taskId, fields) {
   if (!existing) throw new Error("Task not found");
 
   // 2) 合并：若 fields.xxx 不存在，就用 existing.xxx
-  const finalDueDate = fields.due_date ?? existing.due_date;
-  const finalInspectionDate = fields.inspection_date ?? existing.inspection_date;
+  const finalDueDate =
+    fields.due_date === "" ? null : fields.due_date ?? existing.due_date;
+  const finalInspectionDate =
+    fields.inspection_date === ""
+      ? null
+      : fields.inspection_date ?? existing.inspection_date;
   const finalTaskName = fields.task_name ?? existing.task_name;
   const finalDescription = fields.task_description ?? existing.task_description;
   const finalRepeat = fields.repeat_frequency ?? existing.repeat_frequency;
