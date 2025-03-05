@@ -1,6 +1,8 @@
 // controllers/agencyWhitelistController.js
 const agencyWhitelistModel = require("../models/agencyWhitelistModel");
 const agencyModel = require("../models/agencyModel"); // 假设也有这个 model，用来验证 agency 是否存在
+const userModel = require("../models/userModel");
+const { use } = require("../routes/apiRoutes");
 
 /**
  * GET /agencies/:agencyId/whitelist
@@ -9,9 +11,10 @@ const agencyModel = require("../models/agencyModel"); // 假设也有这个 mode
 async function getAgencyWhitelist(req, res, next) {
   try {
     const { agencyId } = req.params;
+    const requestingUser = await userModel.getUserById(req.user.user_id);
 
     // 如果需要检查 agency 是否存在，可以调用 agencyModel 或者看项目习惯
-    const agency = await agencyModel.getAgencyByAgencyId(agencyId);
+    const agency = await agencyModel.getAgencyByAgencyId(parseInt(agencyId, 10), requestingUser);
     if (!agency) {
       return res.status(404).json({ message: "Agency not found" });
     }

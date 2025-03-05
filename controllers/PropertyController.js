@@ -122,7 +122,7 @@ module.exports = {
       // 如有需要，可以把机构信息附加到返回数据中
       for (let i = 0; i < properties.length; i++) {
         const owner = await userModel.getUserById(properties[i].user_id);
-        const agency = await agencyModel.getAgencyByAgencyId(owner.agency_id);
+        const agency = await agencyModel.getAgencyByAgencyId(owner.agency_id, user);
         properties[i].agency = agency;
       }
       res.status(200).json(properties);

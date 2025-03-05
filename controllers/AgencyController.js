@@ -90,10 +90,23 @@ module.exports = {
   // 获取机构详情
   getAgencyDetail: async (req, res, next) => {
     try {
-      const agencyId = req.params.id;
-      const agency = await agencyModel.getAgencyByAgencyId(agencyId, { withProperties: true, withTasks: true });
-      if (!agency) return res.status(404).json({ message: "Agency not found" });
-      res.status(200).json(agency);
+      // 假设你在中间件里已经把登录用户挂载到 req.user
+      const requestingUser = await userModel.getUserById(req.user.user_id);
+      const agencyId = parseInt(req.params.id, 10);
+  
+      // 需要带 properties & tasks
+      const agency = await agencyModel.getAgencyByAgencyId(
+        agencyId,
+        requestingUser,
+        { withProperties: true, withTasks: true }
+      );
+      
+      if (!agency) {
+        // 可能是没找到，也可能是无权限
+        return res.status(404).json({ message: "Agency not found" });
+      }
+  
+      return res.status(200).json(agency);
     } catch (error) {
       next(error);
     }

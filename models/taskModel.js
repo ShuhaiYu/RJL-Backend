@@ -29,7 +29,7 @@ async function createTask({
     INSERT INTO "TASK" 
       (property_id, due_date, task_name, task_description, repeat_frequency, type, status, email_id, agency_id, is_active)
     VALUES 
-      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
+      ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
     RETURNING *;
   `;
   const values = [
@@ -199,14 +199,18 @@ async function listTasks(requestingUser, filters = {}) {
     values.push(requestingUser.agency_id);
     // 如果 query 参数中指定了 status，则使用该条件；否则使用默认过滤条件
     if (status) {
+      const normalizedStatus = status.replace(/_/g, " ");
+
       querySQL += ` AND T.status = $${values.length + 1}`;
-      values.push(status);
+      values.push(normalizedStatus);
     } else {
       querySQL += ` AND T.status <> 'UNKNOWN'`;
     }
     if (type) {
+      const normalizedType = type.replace(/_/g, " ");
+
       querySQL += ` AND T.type = $${values.length + 1}`;
-      values.push(type);
+      values.push(normalizedType);
     }
     querySQL += ` ORDER BY T.updated_at DESC;`;
   } else {
@@ -214,23 +218,27 @@ async function listTasks(requestingUser, filters = {}) {
       throw new Error("Non-admin user must have an agency_id");
     }
     querySQL = `
-      SELECT T.*, P.address as property_address, A.agency_name
+      SELECT T.*, P.user_id, P.address as property_address, A.agency_name
       FROM "TASK" T
-      LEFT JOIN "PROPERTY" P ON T.property_id = P.id
-      LEFT JOIN "AGENCY" A ON T.agency_id = A.id
+      JOIN "PROPERTY" P ON T.property_id = P.id
+      JOIN "AGENCY" A ON T.agency_id = A.id
       WHERE T.is_active = true 
         AND P.user_id = $1
     `;
     values.push(requestingUser.id);
     if (status) {
+      const normalizedStatus = status.replace(/_/g, " ");
+
       querySQL += ` AND T.status = $${values.length + 1}`;
-      values.push(status);
+      values.push(normalizedStatus);
     } else {
       querySQL += ` AND T.status <> 'UNKNOWN'`;
     }
     if (type) {
+      const normalizedType = type.replace(/_/g, " ");
+
       querySQL += ` AND T.type = $${values.length + 1}`;
-      values.push(type);
+      values.push(normalizedType);
     }
     querySQL += ` ORDER BY T.updated_at DESC;`;
   }
