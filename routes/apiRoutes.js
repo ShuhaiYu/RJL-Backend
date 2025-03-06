@@ -29,6 +29,9 @@ router.post("/emails/process", emailController.createPropertyByEmail);
 // 以下所有路由都需要通过 token 验证
 router.use(authMiddleware.authenticateToken);
 
+// Dashboard
+router.get("/dashboard", taskController.getDashboard);
+
 /* -------------------------------
    User Management Routes
    说明：管理所有用户的创建、查询、更新等操作，

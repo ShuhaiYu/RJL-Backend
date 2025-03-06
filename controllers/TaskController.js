@@ -42,6 +42,8 @@ module.exports = {
   updateTask: async (req, res, next) => {
     try {
       const taskId = req.params.id;
+      // 前端可能会在 body 里传：
+      // { status: "INCOMPLETE", type: "smoke alarm", archive_conflicts: true }
       const updatedTask = await taskModel.updateTask(taskId, req.body);
       res.status(200).json({ message: "Task updated successfully", data: updatedTask });
     } catch (error) {
@@ -97,4 +99,28 @@ module.exports = {
       next(error);
     }
   },
+
+  getDashboard: async (req, res, next) => {
+    try {
+      const user = await userModel.getUserById(req.user.user_id);
+      const stats = await taskModel.getDashboardStats(user);
+      // 如果要对 stats 做一些处理，或者加别的字段，可以这里处理
+      if (!stats) {
+        return res.status(200).json({
+          unknown_count: 0,
+          incomplete_count: 0,
+          processing_count: 0,
+          completed_count: 0,
+          due_soon_count: 0,
+          expired_count: 0,
+          history_count: 0,
+          smoke_alarm_count: 0,
+          gas_electric_count: 0,
+        });
+      }
+      return res.status(200).json(stats);
+    } catch (error) {
+      next(error);
+    }
+  }
 };
