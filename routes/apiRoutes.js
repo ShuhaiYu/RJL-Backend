@@ -22,6 +22,7 @@ const {
   updateAgencyWhitelist,
   deleteAgencyWhitelist,
 } = require("../controllers/agencyWhitelistController");
+const { syncPastEmails } = require("../controllers/EmailSyncController");
 
 // 邮件监听器route
 router.post("/emails/process", emailController.createPropertyByEmail);
@@ -243,6 +244,9 @@ router.get(
   // authMiddleware.requirePermission("read", "email"),
   emailController.listEmails
 );
+
+router.post("/emails/sync", syncPastEmails);
+
 
 /* -------------------------------
    System Setting Routes

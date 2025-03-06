@@ -42,6 +42,11 @@ function openInbox(cb) {
  */
 imap.once('ready', () => {
   console.log('[IMAP] Ready, opening INBOX...');
+  if (!imap.serverSupports("X-GM-EXT-1")) {
+    console.warn("[IMAP] This server does NOT support X-GM-EXT-1. x-gm-msgid won't be available.");
+  } else {
+    console.log("[IMAP] X-GM-EXT-1 is supported. We should get x-gm-msgid in attrs.");
+  }
   openInbox((err, box) => {
     if (err) throw err;
 
@@ -60,6 +65,11 @@ imap.once('ready', () => {
         console.log(`[IMAP] Fetching message #${seqno}`);
 
         let rawBuffer = Buffer.from('');
+
+        msg.on("attributes", (attrs) => {
+          console.log("ATTRS =>", attrs);
+          console.log("x-gm-msgid =>", attrs["x-gm-msgid"]);
+        });
 
         msg.on('body', (stream) => {
           stream.on('data', (chunk) => {

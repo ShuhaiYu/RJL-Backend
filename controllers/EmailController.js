@@ -164,7 +164,7 @@ module.exports = {
   // 根据邮件内容自动创建房产、任务、联系人
   createPropertyByEmail: async (req, res, next) => {
     try {
-      const { subject, from, textBody, htmlBody } = req.body;
+      const { subject, from, textBody, htmlBody, gmail_msgid } = req.body;
       if (!textBody) {
         return res.status(400).json({ message: "Missing textBody." });
       }
@@ -381,6 +381,7 @@ module.exports = {
             html: htmlBody || "",
             property_id: property.id,
             agency_id: agency.id,
+            gmail_msgid,
           });
         }
 

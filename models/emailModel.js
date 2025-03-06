@@ -7,13 +7,14 @@ async function createEmailRecord({
   html,
   property_id,
   agency_id,
+  gmail_msgid = null, // 新增
 }) {
   try {
     await pool.query("BEGIN");
 
     const insertEmailSQL = `
-        INSERT INTO "EMAIL" (subject, sender, email_body, html, property_id, agency_id)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO "EMAIL" (subject, sender, email_body, html, property_id, agency_id, gmail_msgid)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *;
     `;
     const { rows: emailRows } = await pool.query(insertEmailSQL, [
@@ -23,6 +24,7 @@ async function createEmailRecord({
       html,
       property_id,
       agency_id,
+      gmail_msgid,
     ]);
     const email = emailRows[0];
 
@@ -81,4 +83,66 @@ async function getEmailByUniqueKey({ subject, sender, property_id }) {
   return rows[0] || null;
 }
 
-module.exports = { createEmailRecord, listEmails, getEmailByUniqueKey };
+/**
+ * saveEmailIfNotExists
+ * @param {Object} param
+ * @param {string|null} param.xGmMsgId
+ * @param {string} param.from
+ * @param {string} param.subject
+ * @param {string} param.textBody
+ * @param {string} param.htmlBody
+ * @returns {Promise<boolean>} 如果插入了新纪录返回 true, 否则 false
+ */
+async function saveEmailIfNotExists({
+  xGmMsgId,
+  from,
+  subject,
+  textBody,
+  htmlBody,
+}) {
+  if (!xGmMsgId) {
+    // 没有 xGmMsgId 的情况很少见，但可以做处理
+    console.warn("saveEmailIfNotExists: xGmMsgId is empty, skipping...");
+    return false;
+  }
+
+  // 1) 先查
+  const checkSql = `
+    SELECT id FROM "EMAIL"
+    WHERE gmail_msgid = $1
+    LIMIT 1
+  `;
+  const { rows } = await pool.query(checkSql, [xGmMsgId]);
+  if (rows.length > 0) {
+    // 已存在
+    return false;
+  }
+
+  // 2) 不存在则插入
+  const insertSql = `
+    INSERT INTO "EMAIL" (gmail_msgid, sender, subject, email_body, html, created_at)
+    VALUES ($1, $2, $3, $4, $5, NOW())
+    RETURNING id
+  `;
+  const insertValues = [xGmMsgId, from, subject, textBody, htmlBody];
+  await pool.query(insertSql, insertValues);
+
+  return true;
+}
+
+/**
+ * 查询根据 xGmMsgId
+ */
+async function getEmailByGmailMsgId(gmailMsgid) {
+  const sql = `SELECT * FROM "EMAIL" WHERE gmail_msgid = $1 LIMIT 1;`;
+  const { rows } = await pool.query(sql, [gmailMsgid]);
+  return rows[0] || null;
+}
+
+module.exports = {
+  createEmailRecord,
+  listEmails,
+  getEmailByUniqueKey,
+  saveEmailIfNotExists,
+  getEmailByGmailMsgId,
+};
