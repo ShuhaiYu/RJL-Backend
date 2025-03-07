@@ -6,6 +6,7 @@ const dayjs = require("dayjs");
 
 const { createPropertyByEmail } = require("./EmailController");
 const emailModel = require("../models/emailModel");
+const systemSettingsModel  = require("../models/systemSettingsModel");
 
 /**
  * 同步过去 X 天的邮件
@@ -20,6 +21,11 @@ async function syncPastEmails(req, res) {
   const days = parseInt(req.query.days, 10) || 7;
   const sinceDate = dayjs().subtract(days, "day").format("MMM DD, YYYY");
 
+  const systemSettings = await systemSettingsModel.getSystemSettings();
+  if (!systemSettings) {
+    return res.status(500).json({ message: "System settings not found" });
+  }
+
   // 1) 拿到数据库里的 IMAP 配置
   const { imap_host, imap_port, imap_user, imap_password } = systemSettings;
 
@@ -32,7 +38,7 @@ async function syncPastEmails(req, res) {
     tls: true,
     tlsOptions: { servername: imap_host },
   });
-  
+
   imap.once("ready", () => {
     imap.openBox("INBOX", false, (err) => {
       if (err) {
