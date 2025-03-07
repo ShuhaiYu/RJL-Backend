@@ -2,24 +2,12 @@
 const pool = require("./config/db");
 const dayjs = require("dayjs");
 const nodemailer = require("nodemailer");
-require("dotenv").config(); // 从 .env 文件中读取环境变量
+
+// 引入 systemSettingsModel，用于获取数据库存储的 Gmail/SMTP 配置
+const systemSettingsModel = require("./models/systemSettingsModel");
 
 /**
- * 创建 nodemailer transporter（根据你的邮箱服务设置）
- * 若你用 Gmail，可以 host = 'smtp.gmail.com', tls = true, user/password为专用密码
- */
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.GMAIL_USER, // 你的邮箱地址
-    pass: process.env.GMAIL_PASSWORD, // 你的应用专用密码
-  },
-});
-
-/**
- * 示例： 查找需要提醒的任务
+ * 查找需要提醒的任务
  * 逻辑：
  *   1. 任务的 due_date 是 “今天” 或 “60天前”
  */
@@ -34,75 +22,109 @@ async function findTasksToRemind() {
       t.task_description,
       t.due_date,
       t.repeat_frequency,
-      
-      -- 房产信息
+      t.type,
+
       p.address AS property_address,
 
-      -- 用户（房产拥有者/关联者）的邮箱
       u.email AS user_email,
-      u.name AS user_name  -- 如果在user表有名字字段，可以取出来当收件人名字
+      u.name AS user_name
 
     FROM "TASK" t
     JOIN "PROPERTY" p ON t.property_id = p.id
     JOIN "USER" u ON p.user_id = u.id
 
     WHERE t.status = 'INCOMPLETE'
-       AND to_char(t.due_date, 'YYYY-MM-DD') IN ($1, $2)
+      AND to_char(t.due_date, 'YYYY-MM-DD') IN ($1, $2)
   `;
-
   const { rows } = await pool.query(sql, [today, sixtyDaysEarly]);
-  return rows; // 这里返回的每一行就包含 user_email, property_address 等
+  return rows;
 }
 
 /**
- * 主函数: 查找所有需要提醒的任务, 对每个联系人发送邮件
+ * 主函数: 查找所有需要提醒的任务, 并发送邮件提醒
  */
 async function sendReminders() {
-  const tasks = await findTasksToRemind();
-  if (tasks.length === 0) {
-    console.log("[REMINDER] No tasks to remind right now.");
-    return;
-  }
-
-  for (const t of tasks) {
-    const toEmail = t.user_email || process.env.TEST_EMAIL; // 真实环境用 t.user_email；测试环境可以强制用 TEST_EMAIL
-    
-    // 这里假设你的前端访问链接是 /property/tasks/:taskId
-    // 如果你有线上域名，举例可写成：`https://yourdomain.com/property/tasks/${t.id}`
-    // 或者使用一个 .env 配置项如 process.env.APP_BASE_URL
-    const taskDetailURL = `${process.env.FRONTEND_URL}/property/tasks/${t.id}`;
-
-    // 拼接邮件内容
-    const subject = `Task Reminder: ${t.task_name}`;
-    const textBody =
-      `Hello ${t.user_name || "User"},\n\n` +
-      `You have an INCOMPLETE task that needs attention:\n` +
-      `------------------------------------------------------\n` +
-      `Task Name: ${t.task_name}\n` +
-      `Task Type: ${t.type || "N/A"}\n` +
-      `Property Address: ${t.property_address || "N/A"}\n` +
-      `Due Date: ${
-        t.due_date ? dayjs(t.due_date).format("YYYY-MM-DD HH:mm") : "N/A"
-      }\n` +
-      (t.task_description
-        ? `Description: ${t.task_description}\n`
-        : "") +
-      `------------------------------------------------------\n\n` +
-      `To view or update this task, please click the link below:\n` +
-      `${taskDetailURL}\n\n` +
-      "Best regards,\nRJL System";
-
-    try {
-      await transporter.sendMail({
-        from: '"Task Reminder" <no-reply@example.com>',
-        to: toEmail,
-        subject,
-        text: textBody,
-      });
-      console.log(`[REMINDER] Sent reminder for task #${t.id} to ${toEmail}`);
-    } catch (err) {
-      console.error(`[REMINDER] Failed to send email for task #${t.id}`, err);
+  try {
+    // 1) 获取系统设置信息（含 Gmail 凭据、前端URL等）
+    const settings = await systemSettingsModel.getSystemSettings();
+    if (!settings) {
+      console.log("[REMINDER] No system settings found, cannot send reminders.");
+      return;
     }
+
+    // 2) 从 settings 中拿到 gmail_user, gmail_password (或其他 SMTP 配置)
+    const { gmail_user, gmail_password, frontend_url } = settings;
+
+    if (!gmail_user || !gmail_password) {
+      console.log("[REMINDER] Gmail config not found, skip sending reminders.");
+      return;
+    }
+
+    // 3) 创建 nodemailer transporter
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: gmail_user,
+        pass: gmail_password,
+      },
+    });
+
+    // 4) 查找要提醒的任务
+    const tasks = await findTasksToRemind();
+    if (tasks.length === 0) {
+      console.log("[REMINDER] No tasks to remind right now.");
+      return;
+    }
+
+    // 5) 给每个 task 发送邮件
+    for (const t of tasks) {
+      const toEmail = t.user_email;
+      // 如果没有 user_email，可以考虑跳过或改为你的测试邮箱
+      if (!toEmail) {
+        console.log(`[REMINDER] Task #${t.id} has no user_email, skip`);
+        continue;
+      }
+
+      // 拼接详情链接: 
+      // 如果你在数据库里存了 'frontend_url'，这里拼接
+      // 若你依然想用 .env，可写 process.env.FRONTEND_URL
+      const taskDetailURL = frontend_url
+        ? `${frontend_url}/property/tasks/${t.id}`
+        : `https://yourdomain.com/property/tasks/${t.id}`;
+
+      const subject = `Task Reminder: ${t.task_name}`;
+      const textBody =
+        `Hello ${t.user_name || "User"},\n\n` +
+        `You have an INCOMPLETE task that needs attention:\n` +
+        `------------------------------------------------------\n` +
+        `Task Name: ${t.task_name}\n` +
+        `Task Type: ${t.type || "N/A"}\n` +
+        `Property Address: ${t.property_address || "N/A"}\n` +
+        `Due Date: ${
+          t.due_date ? dayjs(t.due_date).format("YYYY-MM-DD HH:mm") : "N/A"
+        }\n` +
+        (t.task_description ? `Description: ${t.task_description}\n` : "") +
+        `------------------------------------------------------\n\n` +
+        `To view or update this task, please click the link below:\n` +
+        `${taskDetailURL}\n\n` +
+        "Best regards,\nRJL System";
+
+      try {
+        await transporter.sendMail({
+          from: `"Task Reminder" <${gmail_user}>`, // 发件人
+          to: toEmail,
+          subject,
+          text: textBody,
+        });
+        console.log(`[REMINDER] Sent reminder for task #${t.id} to ${toEmail}`);
+      } catch (err) {
+        console.error(`[REMINDER] Failed to send email for task #${t.id}`, err);
+      }
+    }
+  } catch (error) {
+    console.error("[REMINDER] sendReminders error:", error);
   }
 }
 

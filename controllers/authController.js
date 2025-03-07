@@ -144,12 +144,26 @@ module.exports = {
         { expiresIn: "15m" }
       );
 
-      // Create transporter using Gmail (adjust as needed)
+      // 1) 从数据库获取系统配置
+      const settings = await systemSettingsModel.getSystemSettings();
+      if (!settings) {
+        return res.status(500).json({ message: "System settings not found" });
+      }
+
+      // 2) 取出 gmail_user, gmail_password
+      const { gmail_user, gmail_password } = settings;
+      if (!gmail_user || !gmail_password) {
+        return res.status(500).json({
+          message: "Gmail config is missing in system settings",
+        });
+      }
+
+      // 3) 创建 transporter
       const transporter = nodemailer.createTransport({
         service: "Gmail",
         auth: {
-          user: process.env.GMAIL_USER,
-          pass: process.env.GMAIL_PASSWORD,
+          user: gmail_user,
+          pass: gmail_password,
         },
       });
 

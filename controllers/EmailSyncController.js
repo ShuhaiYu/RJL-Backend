@@ -7,8 +7,6 @@ const dayjs = require("dayjs");
 const { createPropertyByEmail } = require("./EmailController");
 const emailModel = require("../models/emailModel");
 
-const { IMAP_HOST, IMAP_PORT, IMAP_USER, IMAP_PASSWORD } = process.env;
-
 /**
  * 同步过去 X 天的邮件
  * GET/POST /emails/sync?days=7
@@ -22,15 +20,19 @@ async function syncPastEmails(req, res) {
   const days = parseInt(req.query.days, 10) || 7;
   const sinceDate = dayjs().subtract(days, "day").format("MMM DD, YYYY");
 
-  const imap = new Imap({
-    user: IMAP_USER,
-    password: IMAP_PASSWORD,
-    host: IMAP_HOST,
-    port: IMAP_PORT,
-    tls: true,
-    tlsOptions: { servername: IMAP_HOST },
-  });
+  // 1) 拿到数据库里的 IMAP 配置
+  const { imap_host, imap_port, imap_user, imap_password } = systemSettings;
 
+  // 2) 连接 IMAP
+  const imap = new Imap({
+    user: imap_user,
+    password: imap_password,
+    host: imap_host,
+    port: imap_port,
+    tls: true,
+    tlsOptions: { servername: imap_host },
+  });
+  
   imap.once("ready", () => {
     imap.openBox("INBOX", false, (err) => {
       if (err) {
