@@ -163,20 +163,22 @@ async function listTasks(requestingUser, filters = {}) {
   let values = [];
 
   if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
+    // admin/superuser: 默认显示所有激活任务，但如果未传入 status，则排除 COMPLETED 和 HISTORY
     querySQL = `
       SELECT T.*, P.address as property_address, A.agency_name
       FROM "TASK" T
       LEFT JOIN "PROPERTY" P ON T.property_id = P.id
       LEFT JOIN "AGENCY" A ON T.agency_id = A.id
-      WHERE T.is_active = true AND T.status <> 'COMPLETED' AND T.status <> 'HISTORY'
+      WHERE T.is_active = true
     `;
-    // 如果提供了 status，则追加过滤条件
+    if (!status) {
+      querySQL += " AND T.status NOT IN ('COMPLETED','HISTORY')";
+    }
     if (status) {
       const normalizedStatus = status.replace(/_/g, " ");
       querySQL += ` AND T.status = $${values.length + 1}`;
       values.push(normalizedStatus);
     }
-    // 如果提供了 type，则追加过滤条件
     if (type) {
       const normalizedType = type.replace(/_/g, " ");
       querySQL += ` AND T.type = $${values.length + 1}`;
@@ -197,10 +199,8 @@ async function listTasks(requestingUser, filters = {}) {
         AND U.agency_id = $1
     `;
     values.push(requestingUser.agency_id);
-    // 如果 query 参数中指定了 status，则使用该条件；否则使用默认过滤条件
     if (status) {
       const normalizedStatus = status.replace(/_/g, " ");
-
       querySQL += ` AND T.status = $${values.length + 1}`;
       values.push(normalizedStatus);
     } else {
@@ -208,7 +208,6 @@ async function listTasks(requestingUser, filters = {}) {
     }
     if (type) {
       const normalizedType = type.replace(/_/g, " ");
-
       querySQL += ` AND T.type = $${values.length + 1}`;
       values.push(normalizedType);
     }
@@ -228,7 +227,6 @@ async function listTasks(requestingUser, filters = {}) {
     values.push(requestingUser.id);
     if (status) {
       const normalizedStatus = status.replace(/_/g, " ");
-
       querySQL += ` AND T.status = $${values.length + 1}`;
       values.push(normalizedStatus);
     } else {
@@ -236,7 +234,6 @@ async function listTasks(requestingUser, filters = {}) {
     }
     if (type) {
       const normalizedType = type.replace(/_/g, " ");
-
       querySQL += ` AND T.type = $${values.length + 1}`;
       values.push(normalizedType);
     }

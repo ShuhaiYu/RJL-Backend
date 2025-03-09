@@ -279,17 +279,17 @@ module.exports = {
 
         let hasTask = false;
         if (textLower.includes("smoke")) {
-          tasksToCreate.push({ name: "smoke alarm", repeatYears: 1 });
+          tasksToCreate.push({ name: "SMOKE ALARM", repeatYears: 1 });
           hasTask = true;
         }
         if (textLower.includes("electric")) {
-          tasksToCreate.push({ name: "gas & electric", repeatYears: 2 });
+          tasksToCreate.push({ name: "GAS & ELECTRIC", repeatYears: 2 });
           hasTask = true;
         }
 
         if (!hasTask && textLower.includes("safety check")) {
-          tasksToCreate.push({ name: "smoke alarm", repeatYears: 1 });
-          tasksToCreate.push({ name: "gas & electric", repeatYears: 2 });
+          tasksToCreate.push({ name: "SMOKE ALARM", repeatYears: 1 });
+          tasksToCreate.push({ name: "GAS & ELECTRIC", repeatYears: 2 });
         }
 
         const addressRecord = {
