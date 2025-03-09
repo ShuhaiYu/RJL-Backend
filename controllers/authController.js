@@ -13,6 +13,7 @@ const {
 
 const { getUserPermissions, createUserPermission } = require("../models/userPermissionModel"); // 从中间表查询权限
 const { getPermissionId } = require("../models/permissionModel");
+const systemSettingsModel = require("../models/systemSettingsModel");
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "fallback_access_secret";
 const REFRESH_SECRET =

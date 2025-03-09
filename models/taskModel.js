@@ -432,7 +432,6 @@ async function updateTask(taskId, fields) {
   return rows[0];
 }
 
-
 /**
  * 根据 property_id + task_name 查找是否已存在同名任务
  * 可根据需要再加 type/status 等条件
@@ -466,8 +465,8 @@ async function updateTaskEmailId(taskId, emailId) {
 
 /**
  * 将同一房产、同一类型、状态为 "DUE SOON" 或 "EXPIRED" 的任务归档 (status = 'HISTORY')
- * @param {number} propertyId 
- * @param {string} taskType 
+ * @param {number} propertyId
+ * @param {string} taskType
  * @returns {Promise<number>} 返回受影响行数
  */
 async function archiveConflictingTasks(propertyId, taskType) {
@@ -485,155 +484,55 @@ async function archiveConflictingTasks(propertyId, taskType) {
 
 /**
  * 获取 Dashboard 统计数据
- * - 如果 user.agency_id 存在 => 表示是 agency 用户，不统计 UNKNOWN & 只统计同 agency_id
- * - 如果 user.agency_id 不存在 => 表示是 admin/superuser，看所有任务且包含 UNKNOWN
+ * - 如果 user.agency_id 不存在 => admin/superuser，统计所有任务（包含 UNKNOWN），并统计机构数量与房产数量
+ * - 如果 user.agency_id 存在 => agency 用户，不统计 UNKNOWN，并只统计该 agency 下的任务；
+ *   同时返回 completed_count，并统计该机构下的房产数量
  *
  * 返回字段：
- *  - unknown_count
- *  - incomplete_count
- *  - processing_count
- *  - completed_count
- *  - due_soon_count
- *  - expired_count
- *  - history_count
- *  - smoke_alarm_count
- *  - gas_electric_count
+ *  对 admin/superuser:
+ *    unknown_count, incomplete_count, processing_count, due_soon_count, expired_count, agency_count, property_count
+ *  对 agency 用户:
+ *    unknown_count (0), incomplete_count, processing_count, completed_count, due_soon_count, expired_count, property_count
  */
 async function getDashboardStats(user) {
   const hasAgency = !!user.agency_id;
 
-  if (hasAgency) {
-    // (A) agency 用户 -> 不统计 UNKNOWN，且只统计 agency_id = X
-    const sqlAgency = `
-      SELECT
-        0 AS unknown_count,  -- 强制为 0
-        
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'INCOMPLETE'
-             AND t.agency_id = $1
-        ) AS incomplete_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'PROCESSING'
-             AND t.agency_id = $1
-        ) AS processing_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'COMPLETED'
-             AND t.agency_id = $1
-        ) AS completed_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'DUE SOON'
-             AND t.agency_id = $1
-        ) AS due_soon_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'EXPIRED'
-             AND t.agency_id = $1
-        ) AS expired_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'HISTORY'
-             AND t.agency_id = $1
-        ) AS history_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.type = 'smoke alarm'
-             AND t.agency_id = $1
-             AND t.status <> 'UNKNOWN'
-        ) AS smoke_alarm_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.type = 'gas & electric'
-             AND t.agency_id = $1
-             AND t.status <> 'UNKNOWN'
-        ) AS gas_electric_count
-      ;
-    `;
-    const { rows } = await pool.query(sqlAgency, [user.agency_id]);
-    return rows[0];
-
-  } else {
-    // (B) admin/superuser -> 可以看所有任务 + 包含 UNKNOWN
+  if (!hasAgency) {
+    // admin/superuser
     const sqlAdmin = `
       SELECT
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'UNKNOWN'
-        ) AS unknown_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'INCOMPLETE'
-        ) AS incomplete_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'PROCESSING'
-        ) AS processing_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'COMPLETED'
-        ) AS completed_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'DUE SOON'
-        ) AS due_soon_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'EXPIRED'
-        ) AS expired_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.status = 'HISTORY'
-        ) AS history_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.type = 'smoke alarm'
-        ) AS smoke_alarm_count,
-
-        (SELECT COUNT(*)
-           FROM "TASK" t
-           WHERE t.is_active = true
-             AND t.type = 'gas & electric'
-        ) AS gas_electric_count
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'UNKNOWN') AS unknown_count,
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'INCOMPLETE') AS incomplete_count,
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'PROCESSING') AS processing_count,
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'DUE SOON') AS due_soon_count,
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'EXPIRED') AS expired_count,
+        (SELECT COUNT(*) FROM "AGENCY" a WHERE a.is_active = true) AS agency_count,
+        (SELECT COUNT(*) FROM "PROPERTY" p WHERE p.is_active = true) AS property_count
       ;
     `;
     const { rows } = await pool.query(sqlAdmin);
     return rows[0];
+  } else {
+    // agency 用户
+    const sqlAgency = `
+      SELECT
+        0 AS unknown_count,
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'INCOMPLETE' AND t.agency_id = $1) AS incomplete_count,
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'PROCESSING' AND t.agency_id = $1) AS processing_count,
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'COMPLETED' AND t.agency_id = $1) AS completed_count,
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'DUE SOON' AND t.agency_id = $1) AS due_soon_count,
+        (SELECT COUNT(*) FROM "TASK" t WHERE t.is_active = true AND t.status = 'EXPIRED' AND t.agency_id = $1) AS expired_count,
+        (SELECT COUNT(*) 
+                        FROM "PROPERTY" p 
+                        JOIN "USER" u ON p.user_id = u.id 
+                        WHERE p.is_active = true AND u.agency_id = $1) AS property_count
+
+      ;
+    `;
+    const { rows } = await pool.query(sqlAgency, [user.agency_id]);
+    return rows[0];
   }
 }
-
 
 module.exports = {
   createTask,
