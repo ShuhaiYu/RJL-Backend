@@ -99,36 +99,77 @@ async function getPropertyById(propertyId) {
  * @returns {Promise<Array>} 返回房产记录数组
  */
 async function listProperties(requestingUser, search = "") {
-  let querySQL;
-  let values = [];
+  let baseQuery = `
+    SELECT
+      p.id AS property_id,
+      p.address,
+      p.user_id,
+      p.is_active,
+      p.created_at,
+      p.updated_at,
+
+      u.id AS owner_user_id,       -- 如果你需要
+      u.agency_id AS user_agency_id,
+
+      a.id AS agency_id,
+      a.agency_name,
+      a.address AS agency_address
+      -- 其他 AGENCY 字段如有需要可继续选取
+    FROM "PROPERTY" p
+    JOIN "USER" u ON p.user_id = u.id
+    JOIN "AGENCY" a ON u.agency_id = a.id
+    WHERE p.is_active = true
+  `;
+
+  // role 不同，拼接不同条件
+  const clauses = [];
+  const values = [];
+  let i = 1;
+
   if (requestingUser.role === 'admin' || requestingUser.role === 'superuser') {
-    querySQL = `SELECT * FROM "PROPERTY" WHERE is_active = true`;
-    if (search && search.trim() !== "") {
-      querySQL += " AND address ILIKE $1";
-      values.push(`%${search}%`);
-    }
-    querySQL += " ORDER BY id DESC;";
+    // 不需要加别的权限过滤
   } else if (requestingUser.role === 'agency-admin') {
-    const agencyUsers = await userModel.getUsersByAgencyId(requestingUser.agency_id);
-    const userIds = agencyUsers.map((u) => u.id);
-    querySQL = `SELECT * FROM "PROPERTY" WHERE is_active = true AND user_id = ANY($1::int[])`;
-    values.push(userIds);
-    if (search && search.trim() !== "") {
-      querySQL += " AND address ILIKE $2";
-      values.push(`%${search}%`);
-    }
-    querySQL += " ORDER BY id DESC";
+    // 只返回本机构的
+    clauses.push(`u.agency_id = $${i++}`);
+    values.push(requestingUser.agency_id);
   } else {
-    querySQL = `SELECT * FROM "PROPERTY" WHERE is_active = true AND user_id = $1`;
+    // 普通用户
+    clauses.push(`p.user_id = $${i++}`);
     values.push(requestingUser.id);
-    if (search && search.trim() !== "") {
-      querySQL += " AND address ILIKE $2";
-      values.push(`%${search}%`);
-    }
-    querySQL += " ORDER BY id DESC;";
   }
-  const { rows } = await pool.query(querySQL, values);
-  return rows;
+
+  // 如果有 search 参数，就对 address 做模糊过滤
+  if (search && search.trim() !== "") {
+    clauses.push(`p.address ILIKE $${i++}`);
+    values.push(`%${search}%`);
+  }
+
+  if (clauses.length > 0) {
+    baseQuery += " AND " + clauses.join(" AND ");
+  }
+
+  // 排序
+  baseQuery += ` ORDER BY p.id DESC;`;
+
+  const { rows } = await pool.query(baseQuery, values);
+
+  // 把结果映射成想要的结构
+  return rows.map((row) => ({
+    id: row.property_id,
+    address: row.address,
+    user_id: row.user_id,
+    is_active: row.is_active,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    // 如果需要给前端看 owner user 的信息，可加到这里
+    // owner_user_id: row.owner_user_id,
+    agency: {
+      id: row.agency_id,
+      agency_name: row.agency_name,
+      agency_address: row.agency_address,
+      // ... 其他字段
+    },
+  }));
 }
 
 

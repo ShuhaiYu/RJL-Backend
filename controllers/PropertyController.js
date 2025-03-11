@@ -12,18 +12,21 @@ module.exports = {
       if (!requestingUser) {
         return res.status(403).json({ message: "Requesting user not found" });
       }
-  
+
       // 2) 从前端 body 获取必要字段
       const { address, user_id } = req.body;
       if (!address) {
         return res.status(400).json({ message: "Address is required" });
       }
-  
+
       // 3) 根据请求用户角色，确定要使用的 user_id
       let finalUserId = null;
-  
+
       // 如果是 RJL admin / superuser => 可以指定 assignedUserId，但必须该用户有 agency_id
-      if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
+      if (
+        requestingUser.role === "admin" ||
+        requestingUser.role === "superuser"
+      ) {
         if (!user_id) {
           return res
             .status(400)
@@ -48,7 +51,7 @@ module.exports = {
       ) {
         // 如果不需要自由指定，可以直接把 property 绑定到请求用户
         // finalUserId = requestingUser.id;
-  
+
         // 如果想支持“给同 agency 下其他用户”：
         if (!user_id) {
           return res
@@ -68,19 +71,21 @@ module.exports = {
             message: "You can only assign property to users in your agency",
           });
         }
-  
+
         finalUserId = assignedUser.id;
       } else {
         // 其他角色，如普通用户，禁止创建
-        return res.status(403).json({ message: "No permission to create property" });
+        return res
+          .status(403)
+          .json({ message: "No permission to create property" });
       }
-  
+
       // 4) 开始插入
       const newProperty = await propertyModel.createProperty({
         address,
         user_id: finalUserId,
       });
-  
+
       return res.status(201).json({
         message: "Property created successfully",
         data: newProperty,
@@ -95,7 +100,8 @@ module.exports = {
     try {
       const propertyId = req.params.id;
       const property = await propertyModel.getPropertyById(propertyId);
-      if (!property) return res.status(404).json({ message: "Property not found" });
+      if (!property)
+        return res.status(404).json({ message: "Property not found" });
       res.status(200).json(property);
     } catch (error) {
       next(error);
@@ -106,8 +112,16 @@ module.exports = {
   updateProperty: async (req, res, next) => {
     try {
       const propertyId = req.params.id;
-      const updatedProperty = await propertyModel.updateProperty(propertyId, req.body);
-      res.status(200).json({ message: "Property updated successfully", data: updatedProperty });
+      const updatedProperty = await propertyModel.updateProperty(
+        propertyId,
+        req.body
+      );
+      res
+        .status(200)
+        .json({
+          message: "Property updated successfully",
+          data: updatedProperty,
+        });
     } catch (error) {
       next(error);
     }
@@ -116,15 +130,14 @@ module.exports = {
   // 列出房产：可能需要根据当前用户或机构过滤
   listProperties: async (req, res, next) => {
     try {
+      // 1) 拿请求用户
       const user = await userModel.getUserById(req.user.user_id);
+      // 2) 拿搜索关键字
       const search = req.query.search || "";
+      // 3) 在一条查询中得到房产 + 所属 agency
       const properties = await propertyModel.listProperties(user, search);
-      // 如有需要，可以把机构信息附加到返回数据中
-      for (let i = 0; i < properties.length; i++) {
-        const owner = await userModel.getUserById(properties[i].user_id);
-        const agency = await agencyModel.getAgencyByAgencyId(owner.agency_id, user);
-        properties[i].agency = agency;
-      }
+
+      // 4) 直接返回
       res.status(200).json(properties);
     } catch (error) {
       next(error);
