@@ -10,8 +10,8 @@ const { updateExpiredTasks } = require("./taskStatusUpdater"); // 引用更新�
  */
 function setupCronJobs() {
   // 每天 9:00 执行一次
-  cron.schedule("0 16 * * *", async () => {
-    console.log("[CRON] Running daily tasks at 16:00...");
+  cron.schedule("0 4 * * *", async () => {
+    console.log("[CRON] Running daily tasks at 04:00...");
     try {
       // 1) 发送任务提醒
       await sendReminders();
@@ -39,7 +39,7 @@ function setupCronJobs() {
   // });
 
   console.log(
-    "[CRON] Scheduled job: everyday 09:00 for sending task reminders."
+    "[CRON] Scheduled job: everyday 04:00 for sending task reminders."
   );
 }
 
