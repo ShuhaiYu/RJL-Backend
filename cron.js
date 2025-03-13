@@ -9,7 +9,7 @@ const { updateExpiredTasks } = require("./taskStatusUpdater"); // 引用更新�
  * 初始化所有定时任务（只需在 app.js 启动时调用一次）
  */
 function setupCronJobs() {
-  // 每天 9:00 执行一次
+  // 每天 04:00 执行一次
   cron.schedule("0 4 * * *", async () => {
     console.log("[CRON] Running daily tasks at 04:00...");
     try {
