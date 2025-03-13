@@ -8,11 +8,9 @@ const {
   getUserByEmail,
   getUserById,
   updateUser,
-  createUser,
 } = require("../models/userModel");
 
-const { getUserPermissions, createUserPermission } = require("../models/userPermissionModel"); // 从中间表查询权限
-const { getPermissionId } = require("../models/permissionModel");
+const { getUserPermissions } = require("../models/userPermissionModel");
 const systemSettingsModel = require("../models/systemSettingsModel");
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "fallback_access_secret";
@@ -239,6 +237,42 @@ module.exports = {
       return res.status(200).json({ message: "Password reset successful" });
     } catch (err) {
       next(err);
+    }
+  },
+
+  changePassword : async (req, res, next) => {
+    try {
+      const { oldPassword, newPassword, confirmPassword } = req.body;
+  
+      // 1) 检查必填
+      if (!oldPassword || !newPassword || !confirmPassword) {
+        return res
+          .status(400)
+          .json({ message: 'Old, new, and confirm password are required' });
+      }
+      if (newPassword !== confirmPassword) {
+        return res.status(400).json({ message: 'New passwords do not match' });
+      }
+  
+      // 2) 获取用户
+      const user = await getUserById(req.user.user_id);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+  
+      // 3) 校验旧密码
+      const match = await bcrypt.compare(oldPassword, user.password);
+      if (!match) {
+        return res.status(400).json({ message: 'Old password is incorrect' });
+      }
+  
+      // 4) 更新新密码
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await updateUser(user.id, { password: hashedPassword });
+  
+      return res.status(200).json({ message: 'Password changed successfully' });
+    } catch (error) {
+      next(error);
     }
   },
 

@@ -16,6 +16,9 @@ router.post('/forgot-password', authController.forgotPassword);
 // Reset password
 router.post('/reset-password', authController.resetPassword);
 
+// Change password
+router.post('/change-password', authMiddleware.authenticateToken, authController.changePassword);
+
 // Get current user info
 router.get('/me', authMiddleware.authenticateToken, authController.getCurrentUser);
 
