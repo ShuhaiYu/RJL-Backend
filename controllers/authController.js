@@ -149,9 +149,9 @@ module.exports = {
         return res.status(500).json({ message: "System settings not found" });
       }
 
-      // 2) 取出 gmail_user, gmail_password
-      const { gmail_user, gmail_password } = settings;
-      if (!gmail_user || !gmail_password) {
+      // 2) 取出 email_user, email_password
+      const { email_user, email_password, email_host } = settings;
+      if (!email_user || !email_password) {
         return res.status(500).json({
           message: "Gmail config is missing in system settings",
         });
@@ -159,10 +159,12 @@ module.exports = {
 
       // 3) 创建 transporter
       const transporter = nodemailer.createTransport({
-        service: "Gmail",
+        host: email_host,
+        port: 465,
+        secure: true,
         auth: {
-          user: gmail_user,
-          pass: gmail_password,
+          user: email_user,
+          pass: email_password,
         },
       });
 
@@ -243,7 +245,7 @@ module.exports = {
   changePassword : async (req, res, next) => {
     try {
       const { oldPassword, newPassword, confirmPassword } = req.body;
-  
+
       // 1) 检查必填
       if (!oldPassword || !newPassword || !confirmPassword) {
         return res
@@ -253,23 +255,23 @@ module.exports = {
       if (newPassword !== confirmPassword) {
         return res.status(400).json({ message: 'New passwords do not match' });
       }
-  
+
       // 2) 获取用户
       const user = await getUserById(req.user.user_id);
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
-  
+
       // 3) 校验旧密码
       const match = await bcrypt.compare(oldPassword, user.password);
       if (!match) {
         return res.status(400).json({ message: 'Old password is incorrect' });
       }
-  
+
       // 4) 更新新密码
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       await updateUser(user.id, { password: hashedPassword });
-  
+
       return res.status(200).json({ message: 'Password changed successfully' });
     } catch (error) {
       next(error);

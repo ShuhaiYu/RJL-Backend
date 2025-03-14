@@ -52,22 +52,22 @@ async function sendReminders() {
       return;
     }
 
-    // 2) 从 settings 中拿到 gmail_user, gmail_password (或其他 SMTP 配置)
-    const { gmail_user, gmail_password, frontend_url } = settings;
+    // 2) 从 settings 中拿到 email_user, email_password (或其他 SMTP 配置)
+    const { email_user, email_password, email_host, frontend_url } = settings;
 
-    if (!gmail_user || !gmail_password) {
+    if (!email_user || !email_password) {
       console.log("[REMINDER] Gmail config not found, skip sending reminders.");
       return;
     }
 
     // 3) 创建 nodemailer transporter
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
+      host: email_host,
       port: 465,
       secure: true,
       auth: {
-        user: gmail_user,
-        pass: gmail_password,
+        user: email_user,
+        pass: email_password,
       },
     });
 
@@ -87,7 +87,7 @@ async function sendReminders() {
         continue;
       }
 
-      // 拼接详情链接: 
+      // 拼接详情链接:
       // 如果你在数据库里存了 'frontend_url'，这里拼接
       // 若你依然想用 .env，可写 process.env.FRONTEND_URL
       const taskDetailURL = frontend_url
@@ -113,7 +113,7 @@ async function sendReminders() {
 
       try {
         await transporter.sendMail({
-          from: `"Task Reminder" <${gmail_user}>`, // 发件人
+          from: `"Task Reminder" <${email_user}>`, // 发件人
           to: toEmail,
           subject,
           text: textBody,
