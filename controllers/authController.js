@@ -170,7 +170,7 @@ module.exports = {
 
       // Construct reset URL (adjust FRONTEND_URL as needed)
       const resetUrl = `${
-        email_user
+        process.env.FRONTEND_URL 
       }/auth/reset-password/change?token=${resetToken}&email=${encodeURIComponent(
         email
       )}`;
