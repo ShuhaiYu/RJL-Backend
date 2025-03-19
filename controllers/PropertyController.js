@@ -47,7 +47,7 @@ module.exports = {
       // 如果是 agency-admin / agency-staff => 只能分配给同 agency
       else if (
         requestingUser.role === "agency-admin" ||
-        requestingUser.role === "agency-staff"
+        requestingUser.role === "agency-user"
       ) {
         // 如果不需要自由指定，可以直接把 property 绑定到请求用户
         // finalUserId = requestingUser.id;
