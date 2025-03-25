@@ -80,6 +80,20 @@ module.exports = {
           .json({ message: "No permission to create property" });
       }
 
+      // 在插入前先检查房产是否已存在（根据地址唯一性）
+      const existingProperty = await propertyModel.getPropertyByAddress(
+        address
+      );
+      // 判断当前用户下是否已存在该地址的房产
+      if (
+        existingProperty.length > 0 &&
+        existingProperty.some((property) => property.user_id === finalUserId)
+      ) {
+        return res
+          .status(409)
+          .json({ message: "Property already exists for this user" });
+      }
+
       // 4) 开始插入
       const newProperty = await propertyModel.createProperty({
         address,
@@ -116,12 +130,10 @@ module.exports = {
         propertyId,
         req.body
       );
-      res
-        .status(200)
-        .json({
-          message: "Property updated successfully",
-          data: updatedProperty,
-        });
+      res.status(200).json({
+        message: "Property updated successfully",
+        data: updatedProperty,
+      });
     } catch (error) {
       next(error);
     }
