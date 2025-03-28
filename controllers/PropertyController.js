@@ -155,4 +155,15 @@ module.exports = {
       next(error);
     }
   },
+
+  // 删除房产
+  deleteProperty: async (req, res, next) => {
+    try {
+      const propertyId = req.params.id;
+      await propertyModel.deleteProperty(propertyId);
+      res.status(200).json({ message: "Property deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  },
 };

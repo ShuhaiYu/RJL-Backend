@@ -142,6 +142,11 @@ router.put(
   authMiddleware.requirePermission("update", "property"),
   propertyController.updateProperty
 );
+router.delete(
+  "/properties/:id",
+  authMiddleware.requirePermission("delete", "property"),
+  propertyController.deleteProperty
+);
 
 /* -------------------------------
    Task Management Routes
