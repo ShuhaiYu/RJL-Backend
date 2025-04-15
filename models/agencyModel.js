@@ -95,7 +95,7 @@ async function getAgencyByAgencyId(agencyId, requestingUser, options = {}) {
       // 你可以在 listProperties 里加 JOIN user
       // 也可以再去 userModel 查 user.agency_id
       // 简化写法:
-      return true; // 其实因为我们前面已做过 "if agency != requestingUser.agency_id then null"
+      return prop.agency.id === agencyId; // 其实因为我们前面已做过 "if agency != requestingUser.agency_id then null"
                    // 如果是 admin 返回了所有property, 这里再手动比对
       // 另外一种方式：获取 property 对应的 user => user.agency_id
       // 但是 listProperties() 里并没有返回 user.agency_id，需要额外处理
@@ -195,7 +195,7 @@ async function listAgencies(search = "") {
          FROM "PROPERTY" p 
          JOIN "USER" u ON p.user_id = u.id
          WHERE u.agency_id = a.id
-           AND t.is_active = true) AS total_properties,
+           AND p.is_active = true) AS total_properties,
       (SELECT COUNT(DISTINCT p.id)
          FROM "TASK" t
          JOIN "PROPERTY" p ON t.property_id = p.id
