@@ -283,13 +283,13 @@ module.exports = {
           hasTask = true;
         }
         if (textLower.includes("electric")) {
-          tasksToCreate.push({ name: "GAS & ELECTRIC", repeatYears: 2 });
+          tasksToCreate.push({ name: "GAS & ELECTRICITY", repeatYears: 2 });
           hasTask = true;
         }
 
         if (!hasTask && textLower.includes("safety check")) {
           tasksToCreate.push({ name: "SMOKE ALARM", repeatYears: 1 });
-          tasksToCreate.push({ name: "GAS & ELECTRIC", repeatYears: 2 });
+          tasksToCreate.push({ name: "GAS & ELECTRICITY", repeatYears: 2 });
         }
 
         const addressRecord = {
