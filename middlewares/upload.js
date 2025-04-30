@@ -1,26 +1,23 @@
 // src/middlewares/upload.js
 const multer = require("multer");
 
-const storage = multer.memoryStorage();
+function createUpload(allowedTypes = ["application/pdf"]) {
+  const storage = multer.memoryStorage();
 
-function fileFilter(req, file, cb) {
-  // 只接受图片或 PDF
-  if (
-    file.mimetype.startsWith("image/") || 
-    file.mimetype === "application/pdf"
-  ) {
-    cb(null, true);
-  } else {
-    cb(new Error("Invalid file type. Only images and PDFs are allowed!"));
+  function fileFilter(req, file, cb) {
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      const allowedList = allowedTypes.join(", ");
+      cb(new Error(`Invalid file type. Allowed types: ${allowedList}`));
+    }
   }
+
+  return multer({
+    storage,
+    fileFilter,
+    // limits: { fileSize: 5 * 1024 * 1024 }, // Optional size limit
+  });
 }
 
-const upload = multer({
-  storage,
-  fileFilter,
-//   limits: {
-//     fileSize: 5 * 1024 * 1024, // 可选，限制大小 (5MB)
-//   },
-});
-
-module.exports = upload;
+module.exports = createUpload;

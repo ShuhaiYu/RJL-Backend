@@ -304,6 +304,30 @@ async function getAgencyByWhiteListEmail(email) {
   return rows[0] || null;
 }
 
+/**
+ * 批量查询激活中介名称对应的 ID
+ *
+ * @param {string[]} agencyNames - 不重复的中介名称数组
+ * @returns {Promise<Object>} 返回对象，例如 { 'ABC Real Estate': 1, 'XYZ Group': 5 }
+ */
+async function getActiveAgencyIdsByNames(agencyNames) {
+  if (!agencyNames.length) return {};
+
+  const placeholders = agencyNames.map((_, idx) => `$${idx + 1}`).join(", ");
+  const sql = `
+    SELECT agency_name, id
+    FROM "AGENCY"
+    WHERE agency_name IN (${placeholders}) AND is_active = true
+  `;
+
+  const { rows } = await pool.query(sql, agencyNames);
+  const result = {};
+  for (const row of rows) {
+    result[row.agency_name] = row.id;
+  }
+  return result;
+}
+
 module.exports = {
   createAgency,
   getAgencyByAgencyId,
@@ -312,4 +336,5 @@ module.exports = {
   deleteAgency,
   getAgencyByUserId,
   getAgencyByWhiteListEmail,
+  getActiveAgencyIdsByNames
 };

@@ -1,4 +1,7 @@
 const pool = require("../config/db");
+const csv = require("csv-parser");
+const iconv = require("iconv-lite");
+const { Readable } = require("stream");
 
 async function getSystemSettings() {
   const query = `SELECT * FROM "SYSTEM_SETTINGS" LIMIT 1;`;
@@ -26,7 +29,36 @@ async function updateSystemSettings(fields) {
   return rows[0];
 }
 
+async function importData(file) {
+  return new Promise((resolve, reject) => {
+    const results = [];
+
+    // decode GBK buffer to UTF-8 string
+    const utf8Stream = iconv.decodeStream("gbk");
+
+    Readable.from(file.buffer)
+      .pipe(utf8Stream)
+      .pipe(csv())
+      .on("data", (row) => {
+        for (const key in row) {
+          if (typeof row[key] === "string") {
+            // 替换 Excel 常见的软换行符为 \n
+            row[key] = row[key].replace(/\r\n|\r|\n/g, "\n");
+          }
+        }
+        results.push(row);
+      })
+      .on("end", () => {
+        resolve(results);
+      })
+      .on("error", (err) => {
+        reject(err);
+      });
+  });
+}
+
 module.exports = {
   getSystemSettings,
   updateSystemSettings,
+  importData
 };

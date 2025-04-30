@@ -146,6 +146,52 @@ async function getTaskById(taskId) {
 }
 
 /**
+ * 批量创建任务（自动分批执行）
+ * @param {Array<Object>} tasks
+ * @param {number} [batchSize=100]
+ * @returns {Promise<Array<Object>>}
+ */
+async function createTasks(tasks, batchSize = 100) {
+  const results = [];
+
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize);
+    const values = [];
+    const placeholders = [];
+
+    batch.forEach((task, idx) => {
+      const base = idx * 9;
+      placeholders.push(
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, true)`
+      );
+      values.push(
+        task.property_id,
+        task.due_date,
+        task.task_name,
+        task.task_description,
+        task.repeat_frequency,
+        task.type,
+        task.status,
+        task.email_id || null,
+        task.agency_id
+      );
+    });
+
+    const sql = `
+      INSERT INTO "TASK"
+        (property_id, due_date, task_name, task_description, repeat_frequency, type, status, email_id, agency_id, is_active)
+      VALUES ${placeholders.join(", ")}
+      RETURNING *;
+    `;
+
+    const { rows } = await pool.query(sql, values);
+    results.push(...rows);
+  }
+
+  return results;
+}
+
+/**
  * 列出任务
  * 根据请求用户的角色返回不同范围的任务：
  * - 若请求用户为 admin 或 superuser，返回所有激活的任务；
@@ -533,6 +579,7 @@ async function getDashboardStats(user) {
 
 module.exports = {
   createTask,
+  createTasks,
   getTaskById,
   listTasks,
   deleteTask,

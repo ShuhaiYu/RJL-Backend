@@ -5,7 +5,7 @@ const router = express.Router();
 // 中间件：所有后续接口需要 token 验证
 const authMiddleware = require("../middlewares/authMiddleware");
 // 载入 multer 中间件
-const upload = require("../middlewares/upload");
+const createUpload = require("../middlewares/upload");
 // 资源控制器
 const userController = require("../controllers/UserController");
 const agencyController = require("../controllers/AgencyController");
@@ -189,9 +189,15 @@ router.delete(
 );
 
 // 创建上传接口
+const taskFileUpload = createUpload([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+]);
 router.post(
   "/tasks/:taskId/files",
-  upload.single("file"),
+  taskFileUpload.single("file"),
   taskFileController.uploadTaskFile
 );
 
@@ -259,14 +265,24 @@ router.post("/emails/sync", syncPastEmails);
 --------------------------------- */
 router.get(
   "/settings",
-  // authMiddleware.requirePermission("read", "setting"),
+  authMiddleware.requirePermission("read", "setting"),
   systemController.getSettings
 );
 
 router.put(
   "/settings",
-  // authMiddleware.requirePermission("update", "setting"),
+  authMiddleware.requirePermission("update", "setting"),
   systemController.updateSettings
+);
+
+// 创建上传接口
+const dataImportUpload = createUpload([
+  "text/csv",
+]);
+router.post(
+  "/data-import",
+  dataImportUpload.single("csv_file"),
+  systemController.dataImport
 );
 
 module.exports = router;

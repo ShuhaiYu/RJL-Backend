@@ -1,12 +1,11 @@
 // models/propertyModel.js
 
 const pool = require("../config/db");
-const userModel = require("./userModel");
 
 /**
  * 创建房产（Property）
  * 插入时同时设置 is_active 为 true
- * 
+ *
  * @param {Object} param0
  * @param {string} param0.name - 房产名称
  * @param {string} [param0.address] - 房产地址
@@ -32,7 +31,7 @@ async function createProperty({  address, user_id}) {
  *  - 查询 "TASK" 表：根据 property.id 获取该房产下的任务列表
  *  - 查询 "EMAIL" 表：根据 property.id 获取所有关联邮件
  *  - 查询 "CONTACT" 表：通过 "TASK" 与 "CONTACT" 关联，获取该房产下所有任务的激活联系人
- * 
+ *
  * @param {number} propertyId - 房产 ID
  * @returns {Promise<Object|null>} 返回包含关联数据的房产对象；如果没有查询到，返回 null
  */
@@ -94,7 +93,7 @@ async function getPropertyById(propertyId) {
  * 根据请求用户的角色返回不同范围的房产：
  *  - admin 或 superuser 返回所有激活的房产
  *  - 其他角色（例如 agency 用户）只返回其所属机构的房产
- * 
+ *
  * @param {Object} requestingUser - 请求用户对象，需包含 role 和 agency_id（非 admin/superuser）
  * @returns {Promise<Array>} 返回房产记录数组
  */
@@ -176,7 +175,7 @@ async function listProperties(requestingUser, search = "") {
 /**
  * 根据地址查询房产
  * 仅返回激活状态的房产记录
- * 
+ *
  * @param {string} address - 房产地址
  * @returns {Promise<Array>} 返回匹配的房产数组
  */
@@ -193,7 +192,7 @@ async function getPropertyByAddress(address) {
 /**
  * 软删除房产
  * 将指定房产的 is_active 字段设置为 false
- * 
+ *
  * @param {number} propertyId - 房产 ID
  * @returns {Promise<Object>} 返回更新后的房产记录
  */
@@ -211,7 +210,7 @@ async function deleteProperty(propertyId) {
 /**
  * 更新房产信息
  * 可更新字段包括：name 和 address（根据实际情况可扩展）
- * 
+ *
  * @param {number} propertyId - 房产 ID
  * @param {Object} param1 - 包含要更新的字段，例如 { address, user_id }
  * @returns {Promise<Object>} 返回更新后的房产记录
@@ -243,6 +242,51 @@ async function updateProperty(propertyId, { address, user_id }) {
   return rows[0];
 }
 
+/**
+ * 确保指定 agency 拥有某地址的房产，如果没有则创建
+ *
+ * @param {number} agencyId - 机构 ID
+ * @param {string} address - 房产地址
+ * @returns {Promise<Object>} 返回已存在或新建的房产记录
+ */
+async function findOrCreateProperty(agencyId, address) {
+  // 查找已有房产及其用户的机构信息
+  const propSQL = `
+    SELECT p.*, u.agency_id AS user_agency_id
+    FROM "PROPERTY" p
+    JOIN "USER" u ON p.user_id = u.id
+    WHERE p.address = $1 AND p.is_active = true
+  `;
+  const { rows: properties } = await pool.query(propSQL, [address]);
+
+  const existing = properties.find((p) => p.user_agency_id === agencyId);
+  if (existing) {
+    return existing;
+  }
+
+  // 查找 agency 下的第一个 active 且为 agency-admin 的用户
+  const userSQL = `
+    SELECT id FROM "USER"
+    WHERE agency_id = $1 AND role = 'agency-admin' AND is_active = true
+    ORDER BY id ASC
+    LIMIT 1
+  `;
+  const { rows: users } = await pool.query(userSQL, [agencyId]);
+  if (users.length === 0) {
+    throw new Error(`No active agency-admin found for agency ID ${agencyId}`);
+  }
+
+  const userId = users[0].id;
+
+  // 创建新房产
+  const insertSQL = `
+    INSERT INTO "PROPERTY" (address, user_id, is_active)
+    VALUES ($1, $2, true)
+    RETURNING *;
+  `;
+  const { rows: newProp } = await pool.query(insertSQL, [address, userId]);
+  return newProp[0];
+}
 
 module.exports = {
   createProperty,
@@ -251,4 +295,5 @@ module.exports = {
   getPropertyByAddress,
   deleteProperty,
   updateProperty,
+  findOrCreateProperty
 };
