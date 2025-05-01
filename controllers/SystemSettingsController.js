@@ -34,6 +34,8 @@ exports.dataImport = async (req, res, next) => {
     const uniqueAgencyNames = [...new Set(data.map((item) => item.Customer).filter(Boolean))];
     const agencyMap = await agencyModel.getActiveAgencyIdsByNames(uniqueAgencyNames);
 
+    const tasksToInsert = [];
+    const errors = [];
     for (const [index, item] of data.entries()) {
       const agencyName = item.Customer;
       if (!agencyName) {
@@ -42,29 +44,24 @@ exports.dataImport = async (req, res, next) => {
 
       const agencyId = agencyMap[agencyName];
       if (!agencyId) {
-        return res.status(404).json({ message: `Agency [${agencyName}] not found` });
+        errors.push(`Agency [${agencyName}] not found`);
+        continue;
       }
-      item.agency_id = agencyId;
-    }
 
-    const tasksToInsert = [];
-    const errors = [];
-
-    for (const [index, item] of data.entries()) {
       const rawStatus = item.Status?.toLowerCase() || "";
-      const address = item["Job Address"];
-      const jobNumber = item["Job Number"];
-      // const jobType = item["Job Type"] || "";
-      const schedule = item.Schedule || "";
-      const notes = item.Notes || "";
-      const description = item.Description || "";
-      const agencyId = item.agency_id;
-
       if (!["unassigned", "complete"].includes(rawStatus)) continue;
+
+      const jobNumber = item["Job Number"];
+      const address = item["Job Address"];
       if (!address) {
         errors.push(`Missing Job Address [${jobNumber}]`);
         continue;
       }
+
+      // const jobType = item["Job Type"] || "";
+      const schedule = item.Schedule || "";
+      const notes = item.Notes || "";
+      const description = item.Description || "";
 
       const property = await propertyModel.findOrCreateProperty(agencyId, address);
       const propertyId = property.id;
@@ -159,9 +156,7 @@ exports.dataImport = async (req, res, next) => {
       }
     }
 
-    if (tasksToInsert.length > 0) {
-      await taskModel.createTasks(tasksToInsert);
-    }
+    await taskModel.createTasks(tasksToInsert);
 
     res.status(200).json({ message: "Import completed", created: tasksToInsert.length, errors });
   } catch (error) {
