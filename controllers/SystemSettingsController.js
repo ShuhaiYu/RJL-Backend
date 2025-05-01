@@ -35,7 +35,7 @@ exports.dataImport = async (req, res, next) => {
     const agencyMap = await agencyModel.getActiveAgencyIdsByNames(uniqueAgencyNames);
 
     const tasksToInsert = [];
-    const errors = [];
+    const errors = new Set();
     for (const [index, item] of data.entries()) {
       const agencyName = item.Customer;
       if (!agencyName) {
@@ -44,7 +44,7 @@ exports.dataImport = async (req, res, next) => {
 
       const agencyId = agencyMap[agencyName];
       if (!agencyId) {
-        errors.push(`Agency [${agencyName}] not found`);
+        errors.add(`Agency [${agencyName}] not found`);
         continue;
       }
 
@@ -54,7 +54,7 @@ exports.dataImport = async (req, res, next) => {
       const jobNumber = item["Job Number"];
       const address = item["Job Address"];
       if (!address) {
-        errors.push(`Missing Job Address [${jobNumber}]`);
+        errors.add(`Missing Job Address [${jobNumber}]`);
         continue;
       }
 
@@ -127,7 +127,7 @@ exports.dataImport = async (req, res, next) => {
         let dueDate = null;
         if (rawStatus === "complete") {
           if (!baseDate) {
-            errors.push(`Missing complete date [${jobNumber}]`);
+            errors.add(`Missing complete date [${jobNumber}]`);
             continue;
           }
           dueDate = repeat === "1 year"
@@ -158,8 +158,13 @@ exports.dataImport = async (req, res, next) => {
 
     await taskModel.createTasks(tasksToInsert);
 
-    res.status(200).json({ message: "Import completed", created: tasksToInsert.length, errors });
+    return res.status(200).json({
+      message: "Import completed",
+      created: tasksToInsert.length,
+      errors:  Array.from(errors),
+    });
   } catch (error) {
     next(error);
   }
 };
+
