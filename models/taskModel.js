@@ -66,6 +66,7 @@ async function getTaskById(taskId) {
       T.type,
       T.email_id,
       T.agency_id,
+      T.free_check_available,
 
       A.agency_name,
       
@@ -110,6 +111,7 @@ async function getTaskById(taskId) {
     email: [],
     email_id: first.email_id,
     agency_id: first.agency_id,
+    free_check_available: first.free_check_available,
     agency_name: first.agency_name,
   };
 
@@ -433,6 +435,8 @@ async function updateTask(taskId, fields) {
   const finalStatus = fields.status ?? existing.status;
   // 若没有指定 agency_id，使用原有 agency_id
   const finalAgency = fields.agency_id ?? existing.agency_id;
+  // 同理 free check available
+  const finalFreeCheckAvailable = fields.free_check_available ?? existing.free_check_available;
 
   // 3) 在更新之前判断：是否从 UNKNOWN -> INCOMPLETE 并且 archive_conflicts=true
   const goingFromUnknownToIncomplete =
@@ -455,8 +459,9 @@ async function updateTask(taskId, fields) {
       inspection_date = $5,
       type = $6,
       status = $7,
-      agency_id = $8
-    WHERE id = $9
+      agency_id = $8,
+      free_check_available = $9
+    WHERE id = $10
     RETURNING *;
   `;
 
@@ -470,6 +475,7 @@ async function updateTask(taskId, fields) {
     finalType,
     finalStatus,
     finalAgency,
+    finalFreeCheckAvailable,
     taskId,
   ]);
   return rows[0];
