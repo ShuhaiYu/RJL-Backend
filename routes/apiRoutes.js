@@ -269,6 +269,11 @@ router.get(
   systemController.getSettings
 );
 
+router.get(
+  "/google-map-key",
+  systemController.getGoogleMapKey
+);
+
 router.put(
   "/settings",
   authMiddleware.requirePermission("update", "setting"),

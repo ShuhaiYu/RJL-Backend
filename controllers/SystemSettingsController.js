@@ -15,6 +15,15 @@ exports.getSettings = async (req, res, next) => {
   }
 };
 
+exports.getGoogleMapKey = async (req, res, next) => {
+  try {
+    const googleMapKey = await systemSettingsModel.getGoogleMapKey();
+    res.status(200).json({ google_map_key: googleMapKey });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.updateSettings = async (req, res, next) => {
   try {
     // 只允许超级管理员更新，此处可以通过中间件验证权限

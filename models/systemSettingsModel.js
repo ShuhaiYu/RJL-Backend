@@ -9,6 +9,12 @@ async function getSystemSettings() {
   return rows[0] || null;
 }
 
+async function getGoogleMapKey() {
+  const query = `SELECT google_map_key FROM "SYSTEM_SETTINGS" LIMIT 1;`;
+  const { rows } = await pool.query(query);
+  return rows[0]?.google_map_key || null;
+}
+
 async function updateSystemSettings(fields) {
   const keys = Object.keys(fields);
   if (keys.length === 0) {
@@ -59,6 +65,7 @@ async function importData(file) {
 
 module.exports = {
   getSystemSettings,
+  getGoogleMapKey,
   updateSystemSettings,
   importData
 };
