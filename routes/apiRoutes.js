@@ -16,6 +16,8 @@ const emailController = require("../controllers/EmailController");
 const userPermissionController = require("../controllers/UserPermissionController");
 const taskFileController = require("../controllers/TaskFileController");
 const systemController = require("../controllers/SystemSettingsController");
+const veuProjectController = require("../controllers/veuProjectController");
+// const veuProjectFileController = require("../controllers/veuProjectFileController");
 const {
   getAgencyWhitelist,
   createAgencyWhitelist,
@@ -152,6 +154,11 @@ router.delete(
   authMiddleware.requirePermission("delete", "property"),
   propertyController.deleteProperty
 );
+router.get(
+  "/properties/:propertyId/veu-projects",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.listByProperty
+);
 
 /* -------------------------------
    Task Management Routes
@@ -263,6 +270,32 @@ router.get(
 
 router.post("/emails/sync", syncPastEmails);
 
+/* -------------------------------
+   VEU Project Routes
+   说明： VEU Project 相关接口
+--------------------------------- */
+router.put(
+  "/veu-projects/:id",
+  authMiddleware.requirePermission("update", "veu_project"),
+  veuProjectController.updateById
+);
+
+/* -------------------------------
+   VEU Project Files
+   说明：与任务文件相同的上传白名单
+--------------------------------- */
+// const veuFileUpload = createUpload([
+//   "application/pdf",
+//   "image/jpeg",
+//   "image/jpg",
+//   "image/png",
+// ]);
+
+// router.get(
+//   "/veu-projects/:projectId/files",
+//   authMiddleware.requirePermission("read", "veu_project"),
+//   veuProjectFileController.listFiles
+// );
 
 /* -------------------------------
    System Setting Routes
