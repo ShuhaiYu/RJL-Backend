@@ -279,6 +279,26 @@ router.put(
   authMiddleware.requirePermission("update", "veu_project"),
   veuProjectController.updateById
 );
+router.get(
+  "/veu/incomplete",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.listIncompleteVeu
+);
+router.get(
+  "/veu/incomplete/water-heater",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.listIncompleteVeuWaterHeater
+);
+router.get(
+  "/veu/incomplete/air-conditioner",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.listIncompleteVeuAirConditioner
+);
+router.get(
+  "/veu/dashboard",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.getVeuDashboard
+);
 
 /* -------------------------------
    VEU Project Files

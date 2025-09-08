@@ -1,5 +1,5 @@
 const veuProjectModel = require("../models/veuProjectModel");
-const pool = require("../config/db");
+const userModel = require("../models/userModel");
 
 module.exports = {
   /** GET /properties/:propertyId/veu-projects */
@@ -36,6 +36,52 @@ module.exports = {
         return res.status(404).json({ message: "VEU project not found" });
       }
       return res.status(200).json(updated);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  listIncompleteVeu: async (req, res, next) => {
+    try {
+      const user = await userModel.getUserById(req.user.user_id);
+      const data = await veuProjectModel.listIncompleteVeuProjects(user);
+      return res.status(200).json(data);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  listIncompleteVeuWaterHeater: async (req, res, next) => {
+    try {
+      const user = await userModel.getUserById(req.user.user_id);
+      const data = await veuProjectModel.listIncompleteVeuProjectsByType(
+        user,
+        "water_heater"
+      );
+      return res.status(200).json(data);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  listIncompleteVeuAirConditioner: async (req, res, next) => {
+    try {
+      const user = await userModel.getUserById(req.user.user_id);
+      const data = await veuProjectModel.listIncompleteVeuProjectsByType(
+        user,
+        "air_conditioner"
+      );
+      return res.status(200).json(data);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  getVeuDashboard: async (req, res, next) => {
+    try {
+      const user = await userModel.getUserById(req.user.user_id);
+      const stats = await veuProjectModel.getVeuDashboardStats(user);
+      return res.status(200).json(stats);
     } catch (err) {
       next(err);
     }
