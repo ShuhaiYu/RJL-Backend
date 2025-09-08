@@ -1,6 +1,7 @@
 // controllers/AgencyController.js
 const agencyModel = require("../models/agencyModel");
 const userModel = require("../models/userModel");
+const veuProjectModel = require("../models/veuProjectModel");
 const { createUserPermission } = require("../models/userPermissionModel"); // 从中间表查询权限
 const { getPermissionId } = require("../models/permissionModel");
 const bcrypt = require("bcrypt");
@@ -136,4 +137,21 @@ module.exports = {
       next(error);
     }
   },
+
+  activateVeuProject: async (req, res, next) => {
+    try {
+      const agencyId = parseInt(req.params.id, 10);
+
+      const inserted = await veuProjectModel.activateVeuForAgency(agencyId);
+
+      return res.status(200).json({
+        message: "VEU project activated for agency properties",
+        inserted_count: inserted.length,
+        inserted_samples: inserted.slice(0, 10),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
 };

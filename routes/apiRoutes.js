@@ -93,6 +93,11 @@ router.put(
   authMiddleware.requirePermission("update", "agency"),
   agencyController.updateAgency
 );
+router.put(
+  "/agencies/veu-active/:id",
+  authMiddleware.requirePermission("update", "agency"),
+  agencyController.activateVeuProject
+);
 
 /* -------------------------------
    Agency WhiteList Management Routes
