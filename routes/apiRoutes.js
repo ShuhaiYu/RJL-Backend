@@ -17,7 +17,7 @@ const userPermissionController = require("../controllers/UserPermissionControlle
 const taskFileController = require("../controllers/TaskFileController");
 const systemController = require("../controllers/SystemSettingsController");
 const veuProjectController = require("../controllers/veuProjectController");
-// const veuProjectFileController = require("../controllers/veuProjectFileController");
+const veuProjectFileController = require("../controllers/veuProjectFileController");
 const {
   getAgencyWhitelist,
   createAgencyWhitelist,
@@ -304,18 +304,40 @@ router.get(
    VEU Project Files
    说明：与任务文件相同的上传白名单
 --------------------------------- */
-// const veuFileUpload = createUpload([
-//   "application/pdf",
-//   "image/jpeg",
-//   "image/jpg",
-//   "image/png",
-// ]);
+const veuFileUpload = createUpload([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+]);
 
-// router.get(
-//   "/veu-projects/:projectId/files",
-//   authMiddleware.requirePermission("read", "veu_project"),
-//   veuProjectFileController.listFiles
-// );
+// 上传VEU项目文件
+router.post(
+  "/veu-projects/:projectId/files",
+  veuFileUpload.single("file"),
+  veuProjectFileController.uploadVeuProjectFile
+);
+
+// 获取VEU项目文件列表
+router.get(
+  "/veu-projects/:projectId/files",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectFileController.getVeuProjectFiles
+);
+
+// 删除VEU项目文件
+router.delete(
+  "/veu-projects/:projectId/files/:fileId",
+  authMiddleware.requirePermission("update", "veu_project"),
+  veuProjectFileController.deleteVeuProjectFile
+);
+
+// 获取VEU项目文件预签名URL
+router.get(
+  "/veu-projects/:projectId/files/:fileId/download",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectFileController.getVeuProjectFileSignedUrl
+);
 
 /* -------------------------------
    System Setting Routes
