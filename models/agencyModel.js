@@ -5,6 +5,16 @@ const userModel = require("./userModel");
 const propertyModel = require("./propertyModel"); // 内含 listProperties
 const taskModel = require("./taskModel"); // 内含 listTasks
 
+async function getAgencyById(agencyId, { requireActive = false } = {}) {
+  if (!agencyId || Number.isNaN(Number(agencyId))) {
+    throw new Error("Invalid agencyId");
+  }
+  let sql = `SELECT * FROM "AGENCY" WHERE id = $1`;
+  if (requireActive) sql += ` AND is_active = true`;
+  const { rows } = await pool.query(sql, [agencyId]);
+  return rows[0] || null;
+}
+
 /**
  * 创建新机构记录
  * 注意：该方法仅负责在 AGENCY 表中插入机构信息，不再创建对应用户，
@@ -329,6 +339,7 @@ async function getActiveAgencyIdsByNames(agencyNames) {
 }
 
 module.exports = {
+  getAgencyById,
   createAgency,
   getAgencyByAgencyId,
   updateAgency,

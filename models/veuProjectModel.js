@@ -130,7 +130,10 @@ async function getVeuProjectsByPropertyId(propertyId) {
   return rows;
 }
 
-/** Incomplete = completed_by IS NULL or '' (agency scoped) */
+/**
+ * Incomplete = completed_by IS NULL or '' (agency scoped).
+ * Return agency info with each row.
+ */
 async function listIncompleteVeuProjects(user) {
   const agencyId = user?.agency_id ?? null;
   const sql = `
@@ -148,17 +151,26 @@ async function listIncompleteVeuProjects(user) {
       JOIN scoped_properties sp ON sp.id = vp.property_id
       ORDER BY vp.property_id, vp.type, vp.updated_at DESC, vp.id DESC
     )
-    SELECT l.*, p.address AS property_address
+    SELECT 
+      l.*,
+      p.address AS property_address,
+      u.agency_id AS agency_id,
+      a.agency_name AS agency_name
     FROM latest l
     JOIN "PROPERTY" p ON p.id = l.property_id
-    WHERE (NULLIF(l.completed_by, '') IS NULL)
+    JOIN "USER" u ON u.id = p.user_id
+    LEFT JOIN "AGENCY" a ON a.id = u.agency_id
+    WHERE NULLIF(l.completed_by, '') IS NULL
     ORDER BY l.updated_at DESC, l.id DESC;
   `;
   const { rows } = await pool.query(sql, [agencyId]);
   return rows;
 }
 
-/** Incomplete by type (water_heater / air_conditioner) (agency scoped) */
+/**
+ * Incomplete by type (water_heater / air_conditioner) (agency scoped).
+ * Return agency info with each row.
+ */
 async function listIncompleteVeuProjectsByType(user, type) {
   const agencyId = user?.agency_id ?? null;
   const sql = `
@@ -176,11 +188,17 @@ async function listIncompleteVeuProjectsByType(user, type) {
       JOIN scoped_properties sp ON sp.id = vp.property_id
       ORDER BY vp.property_id, vp.type, vp.updated_at DESC, vp.id DESC
     )
-    SELECT l.*, p.address AS property_address
+    SELECT 
+      l.*,
+      p.address AS property_address,
+      u.agency_id AS agency_id,
+      a.agency_name AS agency_name
     FROM latest l
     JOIN "PROPERTY" p ON p.id = l.property_id
+    JOIN "USER" u ON u.id = p.user_id
+    LEFT JOIN "AGENCY" a ON a.id = u.agency_id
     WHERE l.type = $1
-      AND (NULLIF(l.completed_by, '') IS NULL)
+      AND NULLIF(l.completed_by, '') IS NULL
     ORDER BY l.updated_at DESC, l.id DESC;
   `;
   const { rows } = await pool.query(sql, [type, agencyId]);
@@ -217,10 +235,10 @@ async function getVeuDashboardStats(user) {
     base AS (
       SELECT
         property_id,
-        MAX(CASE WHEN type = 'water_heater'     AND NULLIF(completed_by,'') IS NOT NULL THEN 1 ELSE 0 END) AS wh_done,
-        MAX(CASE WHEN type = 'air_conditioner'  AND NULLIF(completed_by,'') IS NOT NULL THEN 1 ELSE 0 END) AS ac_done,
-        MAX(CASE WHEN type = 'water_heater'     AND NULLIF(completed_by,'') IS NULL     THEN 1 ELSE 0 END) AS wh_incomplete,
-        MAX(CASE WHEN type = 'air_conditioner'  AND NULLIF(completed_by,'') IS NULL     THEN 1 ELSE 0 END) AS ac_incomplete
+        MAX(CASE WHEN type = 'water_heater'    AND NULLIF(completed_by,'') IS NOT NULL THEN 1 ELSE 0 END) AS wh_done,
+        MAX(CASE WHEN type = 'air_conditioner' AND NULLIF(completed_by,'') IS NOT NULL THEN 1 ELSE 0 END) AS ac_done,
+        MAX(CASE WHEN type = 'water_heater'    AND NULLIF(completed_by,'') IS NULL     THEN 1 ELSE 0 END) AS wh_incomplete,
+        MAX(CASE WHEN type = 'air_conditioner' AND NULLIF(completed_by,'') IS NULL     THEN 1 ELSE 0 END) AS ac_incomplete
       FROM latest
       GROUP BY property_id
     )
