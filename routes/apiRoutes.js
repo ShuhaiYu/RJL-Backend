@@ -16,6 +16,8 @@ const emailController = require("../controllers/EmailController");
 const userPermissionController = require("../controllers/UserPermissionController");
 const taskFileController = require("../controllers/TaskFileController");
 const systemController = require("../controllers/SystemSettingsController");
+const veuProjectController = require("../controllers/veuProjectController");
+const veuProjectFileController = require("../controllers/veuProjectFileController");
 const {
   getAgencyWhitelist,
   createAgencyWhitelist,
@@ -93,6 +95,11 @@ router.put(
   authMiddleware.requirePermission("update", "agency"),
   agencyController.updateAgency
 );
+router.put(
+  "/agencies/veu-active/:id",
+  authMiddleware.requirePermission("update", "agency"),
+  agencyController.activateVeuProject
+);
 
 /* -------------------------------
    Agency WhiteList Management Routes
@@ -146,6 +153,11 @@ router.delete(
   "/properties/:id",
   authMiddleware.requirePermission("delete", "property"),
   propertyController.deleteProperty
+);
+router.get(
+  "/properties/:propertyId/veu-projects",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.listByProperty
 );
 
 /* -------------------------------
@@ -258,6 +270,74 @@ router.get(
 
 router.post("/emails/sync", syncPastEmails);
 
+/* -------------------------------
+   VEU Project Routes
+   说明： VEU Project 相关接口
+--------------------------------- */
+router.put(
+  "/veu-projects/:id",
+  authMiddleware.requirePermission("update", "veu_project"),
+  veuProjectController.updateById
+);
+router.get(
+  "/veu/incomplete",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.listIncompleteVeu
+);
+router.get(
+  "/veu/incomplete/water-heater",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.listIncompleteVeuWaterHeater
+);
+router.get(
+  "/veu/incomplete/air-conditioner",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.listIncompleteVeuAirConditioner
+)
+router.get(
+  "/veu/report/overview",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectController.getVeuOverview
+);
+
+/* -------------------------------
+   VEU Project Files
+   说明：与任务文件相同的上传白名单
+--------------------------------- */
+const veuFileUpload = createUpload([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+]);
+
+// 上传VEU项目文件
+router.post(
+  "/veu-projects/:projectId/files",
+  veuFileUpload.single("file"),
+  veuProjectFileController.uploadVeuProjectFile
+);
+
+// 获取VEU项目文件列表
+router.get(
+  "/veu-projects/:projectId/files",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectFileController.getVeuProjectFiles
+);
+
+// 删除VEU项目文件
+router.delete(
+  "/veu-projects/:projectId/files/:fileId",
+  authMiddleware.requirePermission("update", "veu_project"),
+  veuProjectFileController.deleteVeuProjectFile
+);
+
+// 获取VEU项目文件预签名URL
+router.get(
+  "/veu-projects/:projectId/files/:fileId/download",
+  authMiddleware.requirePermission("read", "veu_project"),
+  veuProjectFileController.getVeuProjectFileSignedUrl
+);
 
 /* -------------------------------
    System Setting Routes

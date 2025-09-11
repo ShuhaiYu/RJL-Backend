@@ -137,72 +137,83 @@ async function deleteUser(user_id) {
 }
 
 /**
- * 列出用户记录
- * 
- * 根据请求用户的角色返回不同范围的用户列表：
- * - 如果请求用户是 superuser 或 admin，返回所有用户；
- * - 如果请求用户是 agency-admin，则只返回同一机构（agency_id）的用户；
- * - 其他角色（或未明确授权）的用户，默认只返回自身信息。
- * 
- * 同时通过 LEFT JOIN "AGENCY" 表返回 agency_name，
- * 注意部分用户可能没有 agency_id。
- * 
- * @param {Object} requestingUser - 请求用户对象，需包含 id、role 及 agency_id（如适用）
- * @returns {Promise<Array>} 返回用户列表数组
+ * 列出用户记录（携带所属中介信息）
+ *
+ * 访问范围：
+ * - superuser / admin：返回所有用户
+ * - agency-admin：仅返回同机构（agency_id）用户
+ * - 其他角色：仅返回自身
+ *
+ * 返回字段：
+ * - u.*（用户所有字段）
+ * - 额外展开的中介字段：agency_id, agency_name, agency_address, agency_phone, agency_logo,
+ *   agency_is_active, agency_veu_activated
+ * - agency（JSON 对象，若无机构则为 {}）
  */
 async function listUsers(requestingUser, search = "") {
   try {
-    let query = "";
-    let values = [];
-    if (requestingUser.role === 'superuser' || requestingUser.role === 'admin') {
-      query = `
-        SELECT u.*, a.agency_name 
-        FROM "USER" u 
-        LEFT JOIN "AGENCY" a ON u.agency_id = a.id
-        WHERE u.is_active = true
-      `;
-      if (search && search.trim() !== "") {
-        query += " AND (u.name ILIKE $1 OR u.email ILIKE $1)";
-        values.push(`%${search}%`);
-      }
-      query += " ORDER BY u.id;";
-    } else if (requestingUser.role === 'agency-admin') {
+    const params = [];
+    const idx = () => params.length + 1;
+
+    // 作用域条件
+    let scopeClause = "u.is_active = true";
+    if (requestingUser.role === "agency-admin") {
       if (!requestingUser.agency_id) {
-        throw new Error('Agency user must have an agency_id');
+        throw new Error("Agency user must have an agency_id");
       }
-      query = `
-        SELECT u.*, a.agency_name 
-        FROM "USER" u 
-        LEFT JOIN "AGENCY" a ON u.agency_id = a.id
-        WHERE u.agency_id = $1 AND u.is_active = true
-      `;
-      values.push(requestingUser.agency_id);
-      if (search && search.trim() !== "") {
-        query += " AND (u.name ILIKE $2 OR u.email ILIKE $2)";
-        values.push(`%${search}%`);
-      }
-      query += " ORDER BY u.id;";
-    } else {
-      query = `
-        SELECT u.*, a.agency_name 
-        FROM "USER" u 
-        LEFT JOIN "AGENCY" a ON u.agency_id = a.id
-        WHERE u.id = $1 AND u.is_active = true
-      `;
-      values.push(requestingUser.id);
-      if (search && search.trim() !== "") {
-        query += " AND (u.name ILIKE $2 OR u.email ILIKE $2)";
-        values.push(`%${search}%`);
-      }
+      scopeClause += ` AND u.agency_id = $${idx()}`;
+      params.push(requestingUser.agency_id);
+    } else if (
+      requestingUser.role !== "superuser" &&
+      requestingUser.role !== "admin"
+    ) {
+      scopeClause += ` AND u.id = $${idx()}`;
+      params.push(requestingUser.id);
     }
-    const { rows } = await pool.query(query, values);
+
+    // 搜索条件
+    let searchClause = "";
+    if (search && search.trim() !== "") {
+      searchClause = ` AND (u.name ILIKE $${idx()} OR u.email ILIKE $${idx()})`;
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    const query = `
+      SELECT
+        u.*,
+        a.id              AS agency_id,
+        a.agency_name     AS agency_name,
+        a.address         AS agency_address,
+        a.phone           AS agency_phone,
+        a.logo            AS agency_logo,
+        a.is_active       AS agency_is_active,
+        a.veu_activated   AS agency_veu_activated,
+        COALESCE(
+          jsonb_build_object(
+            'id',            a.id,
+            'agency_name',   a.agency_name,
+            'address',       a.address,
+            'phone',         a.phone,
+            'logo',          a.logo,
+            'is_active',     a.is_active,
+            'veu_activated', a.veu_activated
+          ),
+          '{}'::jsonb
+        ) AS agency
+      FROM "USER" u
+      LEFT JOIN "AGENCY" a ON a.id = u.agency_id
+      WHERE ${scopeClause}
+      ${searchClause}
+      ORDER BY u.id;
+    `;
+
+    const { rows } = await pool.query(query, params);
     return rows;
   } catch (error) {
-    console.error('Error in listUsers:', error);
+    console.error("Error in listUsers:", error);
     throw error;
   }
 }
-
 
 
 /**

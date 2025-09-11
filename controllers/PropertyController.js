@@ -2,103 +2,82 @@
 const propertyModel = require("../models/propertyModel");
 const userModel = require("../models/userModel");
 const agencyModel = require("../models/agencyModel");
+const veuProjectModel = require("../models/veuProjectModel");
 
 module.exports = {
   // 创建房产：一般要求当前用户必须关联机构
   createProperty: async (req, res, next) => {
     try {
-      // 1) 获取“请求用户”信息（谁在调用接口）
       const requestingUser = await userModel.getUserById(req.user.user_id);
       if (!requestingUser) {
         return res.status(403).json({ message: "Requesting user not found" });
       }
 
-      // 2) 从前端 body 获取必要字段
       const { address, user_id } = req.body;
       if (!address) {
         return res.status(400).json({ message: "Address is required" });
       }
 
-      // 3) 根据请求用户角色，确定要使用的 user_id
       let finalUserId = null;
+      let assignedUser = null;
 
-      // 如果是 RJL admin / superuser => 可以指定 assignedUserId，但必须该用户有 agency_id
-      if (
-        requestingUser.role === "admin" ||
-        requestingUser.role === "superuser"
-      ) {
+      if (requestingUser.role === "admin" || requestingUser.role === "superuser") {
         if (!user_id) {
-          return res
-            .status(400)
-            .json({ message: "Must provide 'assignedUserId' for property" });
+          return res.status(400).json({ message: "Must provide 'assignedUserId' for property" });
         }
-        // 查一下 assignedUser
-        const assignedUser = await userModel.getUserById(user_id);
+        assignedUser = await userModel.getUserById(user_id);
         if (!assignedUser) {
           return res.status(404).json({ message: "Assigned user not found" });
         }
-        if (!assignedUser.agency_id) {
-          return res
-            .status(400)
-            .json({ message: "Cannot assign property to user without agency" });
-        }
+        // ✅ 管理员允许分配给“无 agency 的用户”（后面会强制创建 VEU）
         finalUserId = assignedUser.id;
-      }
-      // 如果是 agency-admin / agency-staff => 只能分配给同 agency
-      else if (
+      } else if (
         requestingUser.role === "agency-admin" ||
         requestingUser.role === "agency-user"
       ) {
-        // 如果不需要自由指定，可以直接把 property 绑定到请求用户
-        // finalUserId = requestingUser.id;
-
-        // 如果想支持“给同 agency 下其他用户”：
         if (!user_id) {
-          return res
-            .status(400)
-            .json({ message: "Must provide 'assignedUserId' for property" });
+          return res.status(400).json({ message: "Must provide 'assignedUserId' for property" });
         }
-        const assignedUser = await userModel.getUserById(user_id);
+        assignedUser = await userModel.getUserById(user_id);
         if (!assignedUser) {
           return res.status(404).json({ message: "Assigned user not found" });
         }
-        // 必须同 agency
-        if (
-          !assignedUser.agency_id ||
-          assignedUser.agency_id !== requestingUser.agency_id
-        ) {
+        if (!assignedUser.agency_id || assignedUser.agency_id !== requestingUser.agency_id) {
           return res.status(403).json({
             message: "You can only assign property to users in your agency",
           });
         }
-
         finalUserId = assignedUser.id;
       } else {
-        // 其他角色，如普通用户，禁止创建
-        return res
-          .status(403)
-          .json({ message: "No permission to create property" });
+        return res.status(403).json({ message: "No permission to create property" });
       }
 
-      // 在插入前先检查房产是否已存在（根据地址唯一性）
-      const existingProperty = await propertyModel.getPropertyByAddress(
-        address
-      );
-      // 判断当前用户下是否已存在该地址的房产
-      if (
-        existingProperty.length > 0 &&
-        existingProperty.some((property) => property.user_id === finalUserId)
-      ) {
-        return res
-          .status(409)
-          .json({ message: "Property already exists for this user" });
+      // 重复校验（同一用户+同一地址）
+      const existing = await propertyModel.getPropertyByAddress(address);
+      if (existing.length > 0 && existing.some((p) => p.user_id === finalUserId)) {
+        return res.status(409).json({ message: "Property already exists for this user" });
       }
 
-      // 4) 开始插入
+      // 创建房产
       const newProperty = await propertyModel.createProperty({
         address,
         user_id: finalUserId,
       });
+
+      // ✅ 是否需要自动创建 VEU：无 agency ⇒ 必建；有 agency ⇒ agency.veu_activated=true 才建
+      let shouldCreateVeu = false;
+      if (!assignedUser?.agency_id) {
+        shouldCreateVeu = true;
+      } else {
+        const agency = await agencyModel.getAgencyById(assignedUser.agency_id);
+        if (agency?.veu_activated === true) {
+          shouldCreateVeu = true;
+        }
+      }
+
+      if (shouldCreateVeu) {
+        await veuProjectModel.createVeuProjectsForProperty(newProperty.id);
+      }
 
       return res.status(201).json({
         message: "Property created successfully",
@@ -142,14 +121,9 @@ module.exports = {
   // 列出房产：可能需要根据当前用户或机构过滤
   listProperties: async (req, res, next) => {
     try {
-      // 1) 拿请求用户
       const user = await userModel.getUserById(req.user.user_id);
-      // 2) 拿搜索关键字
       const search = req.query.search || "";
-      // 3) 在一条查询中得到房产 + 所属 agency
       const properties = await propertyModel.listProperties(user, search);
-
-      // 4) 直接返回
       res.status(200).json(properties);
     } catch (error) {
       next(error);
