@@ -293,11 +293,11 @@ router.get(
   "/veu/incomplete/air-conditioner",
   authMiddleware.requirePermission("read", "veu_project"),
   veuProjectController.listIncompleteVeuAirConditioner
-);
+)
 router.get(
-  "/veu/dashboard",
+  "/veu/report/overview",
   authMiddleware.requirePermission("read", "veu_project"),
-  veuProjectController.getVeuDashboard
+  veuProjectController.getVeuOverview
 );
 
 /* -------------------------------
