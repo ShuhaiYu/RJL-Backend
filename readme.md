@@ -543,5 +543,5 @@ These endpoints do not require token verification (except for getting the curren
 
 ---
 
-
+v1.0.0
 
