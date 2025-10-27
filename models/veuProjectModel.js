@@ -13,10 +13,10 @@ async function createVeuProjectsForProperty(propertyId) {
   try {
     await client.query("BEGIN");
     const insertSQL = `
-      INSERT INTO "VEU_PROJECT" (property_id, type, is_completed, price)
+      INSERT INTO "VEU_PROJECT" (property_id, type, is_completed, price, note)
       VALUES 
-        ($1, 'water_heater', false, NULL),
-        ($1, 'air_conditioner', false, NULL)
+        ($1, 'water_heater', false, NULL, NULL),
+        ($1, 'air_conditioner', false, NULL, NULL)
       RETURNING *;
     `;
     const { rows } = await client.query(insertSQL, [propertyId]);
@@ -31,7 +31,7 @@ async function createVeuProjectsForProperty(propertyId) {
 }
 
 /** Update a VEU project */
-async function updateVeuProject(id, { is_completed, price, completed_by, type } = {}) {
+async function updateVeuProject(id, { is_completed, price, completed_by, type, note } = {}) {
   if (!id || Number.isNaN(Number(id))) {
     throw new Error("Invalid id");
   }
@@ -54,6 +54,10 @@ async function updateVeuProject(id, { is_completed, price, completed_by, type } 
   if (type !== undefined) {
     sets.push(`type = $${i++}`);
     values.push(type);
+  }
+  if (note !== undefined) {
+    sets.push(`note = $${i++}`);
+    values.push(note);
   }
   if (sets.length === 0) throw new Error("No fields provided to update");
 
@@ -88,7 +92,7 @@ async function activateVeuForAgency(agencyId) {
         CROSS JOIN (VALUES ('water_heater'::varchar(50)), ('air_conditioner'::varchar(50))) AS v(type)
         WHERE u.agency_id = $1
       )
-      INSERT INTO "VEU_PROJECT" (property_id, type, is_completed, price)
+      INSERT INTO "VEU_PROJECT" (property_id, type, is_completed, price, note)
       SELECT t.property_id, t.type, false, NULL
       FROM targets t
       WHERE NOT EXISTS (
