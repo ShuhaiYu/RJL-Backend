@@ -56,10 +56,11 @@ const propertyRepository = {
   /**
    * Find all properties with filters and pagination
    */
-  async findAll({ isActive = true, userId, agencyId, search, skip = 0, take = 50 }) {
+  async findAll({ isActive = true, userId, agencyId, region, search, skip = 0, take = 50 }) {
     let where = {
       ...(isActive !== undefined && { isActive }),
       ...(userId && { userId }),
+      ...(region && { region }),
       ...(search && {
         address: { contains: search, mode: 'insensitive' },
       }),
@@ -126,6 +127,7 @@ const propertyRepository = {
       data: {
         address: data.address,
         userId: data.user_id,
+        region: data.region || null,
       },
       include: {
         user: {
@@ -145,6 +147,7 @@ const propertyRepository = {
     if (data.address !== undefined) updateData.address = data.address;
     if (data.user_id !== undefined) updateData.userId = data.user_id;
     if (data.is_active !== undefined) updateData.isActive = data.is_active;
+    if (data.region !== undefined) updateData.region = data.region;
 
     return prisma.property.update({
       where: { id },
@@ -159,6 +162,19 @@ const propertyRepository = {
     return prisma.property.update({
       where: { id },
       data: { isActive: false },
+    });
+  },
+
+  /**
+   * Batch update region for multiple properties
+   */
+  async batchUpdateRegion(propertyIds, region) {
+    return prisma.property.updateMany({
+      where: {
+        id: { in: propertyIds },
+        isActive: true,
+      },
+      data: { region },
     });
   },
 };

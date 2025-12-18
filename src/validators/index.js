@@ -22,7 +22,7 @@ function validate(schema, source = 'body') {
       const result = schema.safeParse(data);
 
       if (!result.success) {
-        const details = result.error.errors.map((err) => ({
+        const details = result.error.issues.map((err) => ({
           field: err.path.join('.'),
           message: err.message,
         }));
@@ -59,7 +59,7 @@ function validateAll(schemas) {
       if (schemas.params) {
         const result = schemas.params.safeParse(req.params);
         if (!result.success) {
-          result.error.errors.forEach((err) => {
+          result.error.issues.forEach((err) => {
             errors.push({
               field: `params.${err.path.join('.')}`,
               message: err.message,
@@ -73,7 +73,7 @@ function validateAll(schemas) {
       if (schemas.query) {
         const result = schemas.query.safeParse(req.query);
         if (!result.success) {
-          result.error.errors.forEach((err) => {
+          result.error.issues.forEach((err) => {
             errors.push({
               field: `query.${err.path.join('.')}`,
               message: err.message,
@@ -87,7 +87,7 @@ function validateAll(schemas) {
       if (schemas.body) {
         const result = schemas.body.safeParse(req.body);
         if (!result.success) {
-          result.error.errors.forEach((err) => {
+          result.error.issues.forEach((err) => {
             errors.push({
               field: `body.${err.path.join('.')}`,
               message: err.message,

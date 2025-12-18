@@ -37,6 +37,45 @@ const VEU_PROJECT_TYPE = {
   AIR_CONDITIONER: 'air_conditioner',
 };
 
+// Regions (区域)
+const REGION = {
+  EAST: 'EAST',
+  SOUTH: 'SOUTH',
+  WEST: 'WEST',
+  NORTH: 'NORTH',
+  CENTRAL: 'CENTRAL',
+};
+
+// Region Labels
+const REGION_LABELS = {
+  EAST: 'East',
+  SOUTH: 'South',
+  WEST: 'West',
+  NORTH: 'North',
+  CENTRAL: 'Central',
+};
+
+// Inspection Schedule Status
+const SCHEDULE_STATUS = {
+  PUBLISHED: 'published',
+  CLOSED: 'closed',
+};
+
+// Inspection Booking Status
+const BOOKING_STATUS = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  REJECTED: 'rejected',
+  CANCELLED: 'cancelled',
+};
+
+// Notification Status
+const NOTIFICATION_STATUS = {
+  SENT: 'sent',
+  DELIVERED: 'delivered',
+  FAILED: 'failed',
+};
+
 // Repeat Frequencies
 const REPEAT_FREQUENCY = {
   NONE: 'none',
@@ -56,6 +95,7 @@ const PERMISSION_SCOPE = {
   EMAIL: 'email',
   VEU_PROJECT: 'veu_project',
   SETTING: 'setting',
+  INSPECTION: 'inspection',
 };
 
 // Permission Values
@@ -89,6 +129,11 @@ module.exports = {
   TASK_STATUS,
   TASK_TYPE,
   VEU_PROJECT_TYPE,
+  REGION,
+  REGION_LABELS,
+  SCHEDULE_STATUS,
+  BOOKING_STATUS,
+  NOTIFICATION_STATUS,
   REPEAT_FREQUENCY,
   PERMISSION_SCOPE,
   PERMISSION_VALUE,

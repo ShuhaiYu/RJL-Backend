@@ -144,6 +144,31 @@ const userRepository = {
       where: { refreshToken },
     });
   },
+
+  /**
+   * Find agency users by agencyId, prioritizing agencyAdmin
+   */
+  async findByAgencyIdWithPriority(agencyId) {
+    const users = await prisma.user.findMany({
+      where: {
+        agencyId,
+        isActive: true,
+        email: {
+          not: '',
+        },
+      },
+      orderBy: [
+        // agencyAdmin first, then agencyUser
+        { role: 'asc' },
+      ],
+    });
+
+    // Sort to prioritize agencyAdmin
+    return users.sort((a, b) => {
+      const priority = { agencyAdmin: 1, agencyUser: 2, admin: 3, superuser: 4 };
+      return (priority[a.role] || 99) - (priority[b.role] || 99);
+    });
+  },
 };
 
 module.exports = userRepository;

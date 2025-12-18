@@ -17,6 +17,10 @@ const emailController = require('../controllers/emailController');
 const veuProjectController = require('../controllers/veuProjectController');
 const taskFileController = require('../controllers/taskFileController');
 const veuProjectFileController = require('../controllers/veuProjectFileController');
+const inspectionController = require('../controllers/inspectionController');
+
+// Repositories (for simple routes)
+const systemSettingsRepository = require('../repositories/systemSettingsRepository');
 
 // Upload middleware
 const createUpload = require('../middlewares/upload');
@@ -82,6 +86,70 @@ router.get('/dashboard',
   authMiddleware.authenticateToken,
   authMiddleware.requirePermission('read', 'task'),
   taskController.getDashboardStats
+);
+
+// ==================== SETTINGS ROUTES ====================
+router.get('/google-map-key',
+  authMiddleware.authenticateToken,
+  async (req, res, next) => {
+    try {
+      const key = await systemSettingsRepository.getGoogleMapKey();
+      res.json({ success: true, data: { key: key || '' } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.get('/settings',
+  authMiddleware.authenticateToken,
+  async (req, res, next) => {
+    try {
+      const settings = await systemSettingsRepository.get();
+      if (!settings) {
+        return res.json({ success: true, data: {} });
+      }
+      res.json({
+        success: true,
+        data: {
+          imap_host: settings.imapHost,
+          imap_port: settings.imapPort,
+          imap_user: settings.imapUser,
+          imap_password: settings.imapPassword,
+          email_user: settings.emailUser,
+          email_password: settings.emailPassword,
+          email_host: settings.emailHost,
+          google_map_key: settings.googleMapKey,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.put('/settings',
+  authMiddleware.authenticateToken,
+  async (req, res, next) => {
+    try {
+      const settings = await systemSettingsRepository.update(req.body);
+      res.json({
+        success: true,
+        data: {
+          imap_host: settings.imapHost,
+          imap_port: settings.imapPort,
+          imap_user: settings.imapUser,
+          imap_password: settings.imapPassword,
+          email_user: settings.emailUser,
+          email_password: settings.emailPassword,
+          email_host: settings.emailHost,
+          google_map_key: settings.googleMapKey,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 );
 
 // ==================== USER ROUTES ====================
@@ -199,6 +267,27 @@ router.post('/properties',
   authMiddleware.requirePermission('create', 'property'),
   validate(createPropertySchema),
   propertyController.createProperty
+);
+
+router.put('/properties/batch-update-region',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('update', 'property'),
+  async (req, res, next) => {
+    try {
+      const { property_ids, region } = req.body;
+      if (!property_ids || !Array.isArray(property_ids) || property_ids.length === 0) {
+        return res.status(400).json({ success: false, message: 'property_ids is required and must be a non-empty array' });
+      }
+      if (!region) {
+        return res.status(400).json({ success: false, message: 'region is required' });
+      }
+      const propertyService = require('../services/propertyService');
+      const result = await propertyService.batchUpdateRegion(property_ids, region, req.user);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
 );
 
 router.get('/properties/:id',
@@ -442,6 +531,99 @@ router.delete('/veu-projects/:veuProjectId/files/:fileId',
   authMiddleware.authenticateToken,
   authMiddleware.requirePermission('delete', 'veu_project'),
   veuProjectFileController.deleteVeuProjectFile
+);
+
+// ==================== INSPECTION CONFIG ROUTES ====================
+router.get('/inspection/config',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'inspection'),
+  inspectionController.getAllConfigs
+);
+
+router.get('/inspection/config/:region',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'inspection'),
+  inspectionController.getConfigByRegion
+);
+
+router.put('/inspection/config/:region',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('update', 'inspection'),
+  inspectionController.updateConfigByRegion
+);
+
+// ==================== INSPECTION SCHEDULE ROUTES ====================
+router.get('/inspection/schedules',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'inspection'),
+  inspectionController.listSchedules
+);
+
+router.post('/inspection/schedules',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('create', 'inspection'),
+  inspectionController.createSchedule
+);
+
+router.get('/inspection/schedules/:id',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'inspection'),
+  inspectionController.getScheduleDetail
+);
+
+router.put('/inspection/schedules/:id',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('update', 'inspection'),
+  inspectionController.updateSchedule
+);
+
+router.delete('/inspection/schedules/:id',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('delete', 'inspection'),
+  inspectionController.deleteSchedule
+);
+
+router.get('/inspection/schedules/:id/properties',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'inspection'),
+  inspectionController.getScheduleProperties
+);
+
+router.post('/inspection/schedules/:id/notify',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('update', 'inspection'),
+  inspectionController.sendNotifications
+);
+
+// ==================== INSPECTION BOOKING ROUTES ====================
+router.get('/inspection/bookings',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'inspection'),
+  inspectionController.listBookings
+);
+
+router.get('/inspection/bookings/:id',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'inspection'),
+  inspectionController.getBookingDetail
+);
+
+router.put('/inspection/bookings/:id/confirm',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('update', 'inspection'),
+  inspectionController.confirmBooking
+);
+
+router.put('/inspection/bookings/:id/reject',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('update', 'inspection'),
+  inspectionController.rejectBooking
+);
+
+router.put('/inspection/bookings/:id/reschedule',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('update', 'inspection'),
+  inspectionController.rescheduleBooking
 );
 
 module.exports = router;

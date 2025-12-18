@@ -134,7 +134,7 @@ const permissionRepository = {
    * Assign default permissions based on role
    */
   async assignDefaultPermissions(userId, role) {
-    const scopes = ['user', 'agency', 'property', 'task', 'contact', 'email', 'veu_project', 'setting'];
+    const scopes = ['user', 'agency', 'property', 'task', 'contact', 'email', 'veu_project', 'setting', 'inspection'];
     const permissions = [];
 
     for (const scope of scopes) {

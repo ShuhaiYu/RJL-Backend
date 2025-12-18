@@ -11,7 +11,7 @@ const cors = require('cors');
 const app = express();
 
 // Import routes
-const { authRoutes, apiRoutes } = require('./routes');
+const { authRoutes, apiRoutes, publicRoutes } = require('./routes');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middlewares/errorHandler');
@@ -83,6 +83,9 @@ app.use('/auth', authRoutes);
 
 // API routes
 app.use('/api', apiRoutes);
+
+// Public routes (no authentication required)
+app.use('/public', publicRoutes);
 
 // ==================== ERROR HANDLING ====================
 

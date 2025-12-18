@@ -10,6 +10,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==================== ENUMS ====================
+
+enum Region {
+  EAST
+  SOUTH
+  WEST
+  NORTH
+  CENTRAL
+}
+
 // ==================== MODELS ====================
 
 model Agency {
@@ -54,7 +64,9 @@ model Contact {
   updatedAt  DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  property Property? @relation(fields: [propertyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_property")
+  property                Property?                @relation(fields: [propertyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_property")
+  inspectionBookings      InspectionBooking[]
+  inspectionNotifications InspectionNotification[]
 
   @@map("CONTACT")
 }
@@ -93,17 +105,21 @@ model Property {
   id        Int       @id @default(autoincrement())
   address   String?
   userId    Int       @map("user_id")
+  region    Region?   // 区域: 东/南/西/北/中
   isActive  Boolean?  @default(true) @map("is_active")
   createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  user        User         @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user")
-  contacts    Contact[]
-  emails      Email[]
-  tasks       Task[]
-  veuProjects VeuProject[]
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user")
+  contacts                Contact[]
+  emails                  Email[]
+  tasks                   Task[]
+  veuProjects             VeuProject[]
+  inspectionBookings      InspectionBooking[]
+  inspectionNotifications InspectionNotification[]
 
+  @@index([region], map: "idx_property_region")
   @@map("PROPERTY")
 }
 
@@ -141,9 +157,10 @@ model Task {
   updatedAt          DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  property Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_property")
-  email    Email?     @relation(fields: [emailId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_email")
-  files    TaskFile[]
+  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_property")
+  email              Email?              @relation(fields: [emailId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_email")
+  files              TaskFile[]
+  inspectionBookings InspectionBooking[]
 
   @@map("TASK")
 }
@@ -176,9 +193,11 @@ model User {
   updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  agency      Agency?          @relation(fields: [agencyId], references: [id], onUpdate: NoAction, map: "fk_agency")
-  properties  Property[]
-  permissions UserPermission[]
+  agency                    Agency?              @relation(fields: [agencyId], references: [id], onUpdate: NoAction, map: "fk_agency")
+  properties                Property[]
+  permissions               UserPermission[]
+  createdInspectionSchedules InspectionSchedule[] @relation("ScheduleCreator")
+  confirmedBookings         InspectionBooking[]  @relation("BookingConfirmer")
 
   @@map("USER")
 }
@@ -230,4 +249,120 @@ model VeuProjectFile {
   @@index([createdAt(sort: Desc)], map: "idx_veu_project_files_created_at")
   @@index([veuProjectId], map: "idx_veu_project_files_project_id")
   @@map("VEU_PROJECT_FILES")
+}
+
+// ==================== INSPECTION SYSTEM ====================
+
+// 区域检查配置表 - 每个区域的时间规则
+model InspectionConfig {
+  id           Int       @id @default(autoincrement())
+  region       Region    @unique
+  startTime    String    @map("start_time") @db.VarChar(5)  // "08:30"
+  endTime      String    @map("end_time") @db.VarChar(5)    // "18:30"
+  slotDuration Int       @map("slot_duration")              // 分钟数，如150
+  maxCapacity  Int       @default(1) @map("max_capacity")   // 每时段最大预约数
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime? @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("INSPECTION_CONFIG")
+}
+
+// 检查计划表 - 发布的检查日程
+model InspectionSchedule {
+  id           Int       @id @default(autoincrement())
+  region       Region
+  scheduleDate DateTime  @map("schedule_date") @db.Date
+  startTime    String    @map("start_time") @db.VarChar(5)
+  endTime      String    @map("end_time") @db.VarChar(5)
+  slotDuration Int       @map("slot_duration")
+  maxCapacity  Int       @default(1) @map("max_capacity")
+  status       String    @default("published") @db.VarChar(20) // published, closed
+  note         String?
+  createdBy    Int       @map("created_by")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime? @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  creator       User                     @relation("ScheduleCreator", fields: [createdBy], references: [id])
+  slots         InspectionSlot[]
+  notifications InspectionNotification[]
+
+  @@unique([region, scheduleDate], map: "idx_schedule_region_date")
+  @@index([scheduleDate], map: "idx_schedule_date")
+  @@map("INSPECTION_SCHEDULE")
+}
+
+// 检查时间段表 - 自动生成的可预约时段
+model InspectionSlot {
+  id              Int       @id @default(autoincrement())
+  scheduleId      Int       @map("schedule_id")
+  startTime       String    @map("start_time") @db.VarChar(5)
+  endTime         String    @map("end_time") @db.VarChar(5)
+  maxCapacity     Int       @default(1) @map("max_capacity")
+  currentBookings Int       @default(0) @map("current_bookings")
+  isAvailable     Boolean   @default(true) @map("is_available")
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  schedule InspectionSchedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  bookings InspectionBooking[]
+
+  @@index([scheduleId, isAvailable], map: "idx_slot_schedule_available")
+  @@map("INSPECTION_SLOT")
+}
+
+// 预约记录表 - 客户的预约
+model InspectionBooking {
+  id             Int       @id @default(autoincrement())
+  slotId         Int       @map("slot_id")
+  propertyId     Int       @map("property_id")
+  taskId         Int?      @map("task_id")
+  contactId      Int?      @map("contact_id")
+  contactName    String    @map("contact_name") @db.VarChar(255)
+  contactPhone   String?   @map("contact_phone") @db.VarChar(100)
+  contactEmail   String?   @map("contact_email") @db.VarChar(255)
+  status         String    @default("pending") @db.VarChar(20) // pending, confirmed, rejected, cancelled
+  note           String?
+  bookingToken   String    @unique @map("booking_token") @db.VarChar(64)
+  tokenExpiresAt DateTime  @map("token_expires_at") @db.Timestamptz(6) // 14天后过期
+  confirmedBy    Int?      @map("confirmed_by")
+  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime? @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  slot      InspectionSlot @relation(fields: [slotId], references: [id])
+  property  Property       @relation(fields: [propertyId], references: [id])
+  task      Task?          @relation(fields: [taskId], references: [id])
+  contact   Contact?       @relation(fields: [contactId], references: [id])
+  confirmer User?          @relation("BookingConfirmer", fields: [confirmedBy], references: [id])
+
+  @@index([bookingToken], map: "idx_booking_token")
+  @@index([propertyId], map: "idx_booking_property")
+  @@index([status], map: "idx_booking_status")
+  @@map("INSPECTION_BOOKING")
+}
+
+// 通知记录表 - 发送的邮件记录
+model InspectionNotification {
+  id             Int       @id @default(autoincrement())
+  scheduleId     Int       @map("schedule_id")
+  propertyId     Int       @map("property_id")
+  contactId      Int?      @map("contact_id")
+  recipientEmail String    @map("recipient_email") @db.VarChar(255)
+  bookingToken   String    @map("booking_token") @db.VarChar(64)
+  status         String    @default("sent") @db.VarChar(20) // sent, delivered, failed
+  sentAt         DateTime? @default(now()) @map("sent_at") @db.Timestamptz(6)
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  schedule InspectionSchedule @relation(fields: [scheduleId], references: [id])
+  property Property           @relation(fields: [propertyId], references: [id])
+  contact  Contact?           @relation(fields: [contactId], references: [id])
+
+  @@index([scheduleId], map: "idx_notification_schedule")
+  @@index([bookingToken], map: "idx_notification_token")
+  @@map("INSPECTION_NOTIFICATION")
 }

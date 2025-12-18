@@ -32,7 +32,7 @@ const propertyService = {
   /**
    * List properties with filters
    */
-  async listProperties(requestingUser, { search, page = 1, limit = 50, user_id }) {
+  async listProperties(requestingUser, { search, page = 1, limit = 50, user_id, region }) {
     const skip = (page - 1) * limit;
     const scope = this.buildPropertyScope(requestingUser);
 
@@ -46,6 +46,11 @@ const propertyService = {
     // Allow user_id filter for admin roles
     if (['superuser', 'admin', 'agency-admin'].includes(requestingUser.role) && user_id) {
       filters.userId = user_id;
+    }
+
+    // Add region filter
+    if (region) {
+      filters.region = region;
     }
 
     const { properties, total } = await propertyRepository.findAll(filters);
@@ -92,6 +97,7 @@ const propertyService = {
     const property = await propertyRepository.create({
       address: data.address,
       user_id: userId,
+      region: data.region || null,
     });
 
     // Create default VEU projects if agency has VEU activated
@@ -189,6 +195,7 @@ const propertyService = {
       id: property.id,
       address: property.address,
       user_id: property.userId,
+      region: property.region,
       is_active: property.isActive,
       created_at: property.createdAt,
       updated_at: property.updatedAt,
@@ -231,6 +238,21 @@ const propertyService = {
     }
 
     return formatted;
+  },
+
+  /**
+   * Batch update region for multiple properties
+   */
+  async batchUpdateRegion(propertyIds, region, requestingUser) {
+    // Only admin and superuser can batch update
+    if (!['superuser', 'admin'].includes(requestingUser.role)) {
+      throw new ForbiddenError('Permission denied');
+    }
+
+    const result = await propertyRepository.batchUpdateRegion(propertyIds, region);
+    return {
+      updated_count: result.count,
+    };
   },
 };
 
