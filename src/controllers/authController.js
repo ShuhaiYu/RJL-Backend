@@ -17,9 +17,13 @@ module.exports = {
       const { email, password } = req.body;
       const result = await authService.login(email, password);
 
-      sendSuccess(res, {
+      // Return tokens at root level for backward compatibility with frontend
+      res.status(200).json({
         message: 'Login successful',
-        data: result,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        role: result.user.role,
+        email: result.user.email,
       });
     } catch (error) {
       next(error);
@@ -35,8 +39,10 @@ module.exports = {
       const { refreshToken } = req.body;
       const result = await authService.refreshToken(refreshToken);
 
-      sendSuccess(res, {
-        data: result,
+      // Return accessToken at root level for backward compatibility
+      res.status(200).json({
+        message: 'Token refreshed',
+        accessToken: result.accessToken,
       });
     } catch (error) {
       next(error);
