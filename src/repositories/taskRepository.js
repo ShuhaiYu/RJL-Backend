@@ -134,28 +134,51 @@ const taskRepository = {
 
   /**
    * Get dashboard statistics
+   * Returns format: { unknown_count, incomplete_count, processing_count, completed_count, due_soon_count, expired_count, agency_count, property_count }
    */
   async getDashboardStats(agencyId, userIds) {
-    let where = { isActive: true };
-    if (agencyId) where.agencyId = agencyId;
-    if (userIds && userIds.length > 0) {
-      where.property = {
-        userId: { in: userIds },
-      };
+    // Admin/Superuser (no agency restriction)
+    if (!agencyId && (!userIds || userIds.length === 0)) {
+      const result = await prisma.$queryRaw`
+        SELECT
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'UNKNOWN')::int AS unknown_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'INCOMPLETE')::int AS incomplete_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'PROCESSING')::int AS processing_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'COMPLETED')::int AS completed_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'DUE SOON')::int AS due_soon_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'EXPIRED')::int AS expired_count,
+          (SELECT COUNT(*) FROM "AGENCY" WHERE is_active = true)::int AS agency_count,
+          (SELECT COUNT(*) FROM "PROPERTY" WHERE is_active = true)::int AS property_count
+      `;
+      return result[0];
     }
 
-    const stats = await prisma.task.groupBy({
-      by: ['status'],
-      where,
-      _count: {
-        status: true,
-      },
-    });
+    // Agency user - filter by agencyId
+    if (agencyId) {
+      const result = await prisma.$queryRaw`
+        SELECT
+          0::int AS unknown_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'INCOMPLETE' AND agency_id = ${agencyId})::int AS incomplete_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'PROCESSING' AND agency_id = ${agencyId})::int AS processing_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'COMPLETED' AND agency_id = ${agencyId})::int AS completed_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'DUE SOON' AND agency_id = ${agencyId})::int AS due_soon_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'EXPIRED' AND agency_id = ${agencyId})::int AS expired_count,
+          (SELECT COUNT(*) FROM "PROPERTY" p JOIN "USER" u ON p.user_id = u.id WHERE p.is_active = true AND u.agency_id = ${agencyId})::int AS property_count
+        `;
+      return { ...result[0], agency_count: undefined };
+    }
 
-    return stats.reduce((acc, item) => {
-      acc[item.status || 'unknown'] = item._count.status;
-      return acc;
-    }, {});
+    // Fallback - shouldn't reach here
+    return {
+      unknown_count: 0,
+      incomplete_count: 0,
+      processing_count: 0,
+      completed_count: 0,
+      due_soon_count: 0,
+      expired_count: 0,
+      agency_count: 0,
+      property_count: 0,
+    };
   },
 
   /**

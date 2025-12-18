@@ -76,6 +76,14 @@ const {
   listVeuProjectsQuerySchema,
 } = require('../validators/veuProjectValidator');
 
+// ==================== DASHBOARD ROUTE ====================
+// Direct path for frontend compatibility (maps to same handler as /tasks/dashboard)
+router.get('/dashboard',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'task'),
+  taskController.getDashboardStats
+);
+
 // ==================== USER ROUTES ====================
 router.get('/users',
   authMiddleware.authenticateToken,

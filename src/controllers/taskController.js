@@ -127,15 +127,14 @@ module.exports = {
 
   /**
    * Get dashboard statistics
-   * GET /api/tasks/dashboard
+   * GET /api/tasks/dashboard or GET /api/dashboard
    */
   getDashboardStats: async (req, res, next) => {
     try {
       const stats = await taskService.getDashboardStats(req.user);
 
-      sendSuccess(res, {
-        data: stats,
-      });
+      // Return stats directly at root level for backward compatibility with frontend
+      res.status(200).json(stats);
     } catch (error) {
       next(error);
     }
