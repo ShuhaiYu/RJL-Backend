@@ -1,0 +1,233 @@
+// Prisma Schema for RJL-Backend
+// Generated from existing PostgreSQL database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== MODELS ====================
+
+model Agency {
+  id            Int       @id @default(autoincrement())
+  agencyName    String    @map("agency_name") @db.VarChar(255)
+  address       String?
+  phone         String?   @db.VarChar(50)
+  logo          String?
+  isActive      Boolean?  @default(true) @map("is_active")
+  veuActivated  Boolean?  @default(false) @map("veu_activated")
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  whitelist AgencyWhitelist[]
+  users     User[]
+
+  @@map("AGENCY")
+}
+
+model AgencyWhitelist {
+  id           Int       @id @default(autoincrement())
+  agencyId     Int       @map("agency_id")
+  emailAddress String    @map("email_address") @db.VarChar(255)
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_agency")
+
+  @@map("AGENCY_WHITELIST")
+}
+
+model Contact {
+  id         Int       @id @default(autoincrement())
+  name       String    @db.VarChar(255)
+  phone      String?   @db.VarChar(100)
+  email      String?   @db.VarChar(255)
+  isActive   Boolean?  @default(true) @map("is_active")
+  propertyId Int?      @map("property_id")
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_property")
+
+  @@map("CONTACT")
+}
+
+model Email {
+  id         Int       @id @default(autoincrement())
+  subject    String?
+  sender     String?
+  emailBody  String?   @map("email_body")
+  html       String?
+  propertyId Int       @map("property_id")
+  agencyId   Int?      @map("agency_id")
+  gmailMsgid String?   @unique @map("gmail_msgid") @db.VarChar(64)
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  property Property @relation(fields: [propertyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_property_email")
+  tasks    Task[]
+
+  @@map("EMAIL")
+}
+
+model Permission {
+  id              Int    @id(map: "permission_pkey") @default(autoincrement())
+  permissionValue String @map("permission_value") @db.VarChar(50)
+  permissionScope String @map("permission_scope") @db.VarChar(50)
+
+  // Relations
+  userPermissions UserPermission[]
+
+  @@map("PERMISSION")
+}
+
+model Property {
+  id        Int       @id @default(autoincrement())
+  address   String?
+  userId    Int       @map("user_id")
+  isActive  Boolean?  @default(true) @map("is_active")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user")
+  contacts    Contact[]
+  emails      Email[]
+  tasks       Task[]
+  veuProjects VeuProject[]
+
+  @@map("PROPERTY")
+}
+
+model SystemSettings {
+  id            Int       @id @default(autoincrement())
+  emailHost     String?   @map("email_host")
+  googleMapKey  String?   @map("google_map_key")
+  imapHost      String?   @map("imap_host") @db.VarChar(255)
+  imapPort      Int?      @map("imap_port")
+  imapUser      String?   @map("imap_user") @db.VarChar(255)
+  imapPassword  String?   @map("imap_password") @db.VarChar(255)
+  emailUser     String?   @map("email_user") @db.VarChar(255)
+  emailPassword String?   @map("email_password") @db.VarChar(255)
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("SYSTEM_SETTINGS")
+}
+
+model Task {
+  id                 Int       @id @default(autoincrement())
+  propertyId         Int       @map("property_id")
+  dueDate            DateTime? @map("due_date") @db.Timestamp(6)
+  taskName           String?   @map("task_name") @db.VarChar(255)
+  taskDescription    String?   @map("task_description")
+  repeatFrequency    String?   @default("none") @map("repeat_frequency") @db.VarChar(20)
+  inspectionDate     DateTime? @map("inspection_date") @db.Timestamp(6)
+  type               String?   @db.VarChar(255)
+  status             String?   @default("unknown") @db.VarChar(20)
+  isActive           Boolean?  @default(true) @map("is_active")
+  emailId            Int?      @map("email_id")
+  agencyId           Int       @map("agency_id")
+  freeCheckAvailable Boolean?  @default(false) @map("free_check_available")
+  createdAt          DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  property Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_property")
+  email    Email?     @relation(fields: [emailId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_email")
+  files    TaskFile[]
+
+  @@map("TASK")
+}
+
+model TaskFile {
+  id        Int       @id @default(autoincrement())
+  taskId    Int       @map("task_id")
+  fileS3Key String    @map("file_s3_key") @db.VarChar(255)
+  fileName  String    @map("file_name") @db.VarChar(255)
+  fileDesc  String?   @map("file_desc")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  task Task @relation(fields: [taskId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_task")
+
+  @@map("TASK_FILES")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique @db.VarChar(255)
+  name         String?   @db.VarChar(255)
+  password     String    @db.VarChar(255)
+  role         String    @db.VarChar(50)
+  isActive     Boolean   @default(true) @map("is_active")
+  refreshToken String?   @map("refresh_token")
+  agencyId     Int?      @map("agency_id")
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  agency      Agency?          @relation(fields: [agencyId], references: [id], onUpdate: NoAction, map: "fk_agency")
+  properties  Property[]
+  permissions UserPermission[]
+
+  @@map("USER")
+}
+
+model UserPermission {
+  userId       Int @map("user_id")
+  permissionId Int @map("permission_id")
+
+  // Relations
+  user       User       @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_permission_fk_user_id")
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_permission_fk_permission_id")
+
+  @@id([userId, permissionId], map: "user_permission_pkey")
+  @@map("USER_PERMISSION")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model VeuProject {
+  id          Int       @id @default(autoincrement())
+  propertyId  Int       @map("property_id")
+  type        String?   @db.VarChar(50)
+  isCompleted Boolean?  @default(false) @map("is_completed")
+  price       Decimal?  @db.Decimal(10, 2)
+  completedBy String?   @map("completed_by") @db.VarChar(255)
+  note        String?
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  property Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  files    VeuProjectFile[]
+
+  @@unique([propertyId, type], map: "idx_veu_project_property_type_unique")
+  @@map("VEU_PROJECT")
+}
+
+model VeuProjectFile {
+  id           Int       @id @default(autoincrement())
+  veuProjectId Int       @map("veu_project_id")
+  fileS3Key    String    @map("file_s3_key") @db.VarChar(500)
+  fileName     String    @map("file_name") @db.VarChar(255)
+  fileDesc     String?   @default("") @map("file_desc")
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  veuProject VeuProject @relation(fields: [veuProjectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "veu_project_files_veu_project_id_fkey")
+
+  @@index([createdAt(sort: Desc)], map: "idx_veu_project_files_created_at")
+  @@index([veuProjectId], map: "idx_veu_project_files_project_id")
+  @@map("VEU_PROJECT_FILES")
+}
