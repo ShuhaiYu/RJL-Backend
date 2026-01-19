@@ -9,6 +9,7 @@ const inspectionNotificationService = require('../services/inspectionNotificatio
 const inspectionBookingService = require('../services/inspectionBookingService');
 const { sendSuccess } = require('../lib/response');
 const { ValidationError } = require('../lib/errors');
+const logger = require('../lib/logger');
 const {
   regionParamSchema,
   updateConfigSchema,
@@ -200,16 +201,40 @@ const inspectionController = {
   /**
    * POST /api/inspection/schedules/:id/notify
    * Send notifications
+   * Returns immediately (202 Accepted) and processes emails in background
    */
   async sendNotifications(req, res, next) {
     try {
       const { id } = scheduleIdParamSchema.parse(req.params);
       const { property_ids } = sendNotificationSchema.parse(req.body);
-      const result = await inspectionNotificationService.sendNotifications(id, property_ids);
+
+      // Respond immediately to prevent timeout
       sendSuccess(res, {
-        message: `Notifications sent: ${result.success.length} success, ${result.failed.length} failed, ${result.skipped.length} skipped`,
-        data: result,
-      });
+        message: 'Notification emails are being sent in the background',
+        data: {
+          schedule_id: id,
+          property_count: property_ids.length,
+          status: 'processing',
+        },
+      }, 202); // 202 Accepted
+
+      // Process emails in background (non-blocking)
+      inspectionNotificationService.sendNotifications(id, property_ids)
+        .then((result) => {
+          logger.info('Background email sending completed', {
+            scheduleId: id,
+            success: result.success.length,
+            failed: result.failed.length,
+            skipped: result.skipped.length,
+          });
+        })
+        .catch((error) => {
+          logger.error('Background email sending failed', {
+            scheduleId: id,
+            error: error.message,
+            stack: error.stack,
+          });
+        });
     } catch (error) {
       next(error);
     }

@@ -88,7 +88,36 @@ const inspectionBookingService = {
         });
       }
 
-      return { confirmed, autoRejectedCount: autoRejected.length };
+      // 4. Update all INCOMPLETE tasks for this property to PROCESSING with inspection date
+      // Construct inspection datetime from schedule date + slot start time
+      const scheduleDate = booking.slot.schedule.scheduleDate;
+      const dateStr = scheduleDate instanceof Date
+        ? scheduleDate.toISOString().split('T')[0]
+        : new Date(scheduleDate).toISOString().split('T')[0];
+      const slotStartTime = booking.slot.startTime; // e.g., "14:30"
+      const inspectionDateTime = new Date(`${dateStr}T${slotStartTime}:00`);
+
+      const taskUpdateResult = await tx.task.updateMany({
+        where: {
+          propertyId: booking.propertyId,
+          status: 'INCOMPLETE',
+          isActive: true,
+        },
+        data: {
+          status: 'PROCESSING',
+          inspectionDate: inspectionDateTime,
+          updatedAt: new Date(),
+        },
+      });
+
+      logger.info('Updated tasks to PROCESSING after booking confirmation', {
+        bookingId: id,
+        propertyId: booking.propertyId,
+        tasksUpdated: taskUpdateResult.count,
+        inspectionDateTime: inspectionDateTime.toISOString(),
+      });
+
+      return { confirmed, autoRejectedCount: autoRejected.length, tasksUpdated: taskUpdateResult.count };
     });
 
     // Send confirmation emails to ALL recipients if requested
@@ -107,6 +136,7 @@ const inspectionBookingService = {
     const finalBooking = await inspectionBookingRepository.findById(id);
     const formatted = this.formatBookingDetail(finalBooking);
     formatted.auto_rejected_count = result.autoRejectedCount;
+    formatted.tasks_updated = result.tasksUpdated;
 
     return formatted;
   },

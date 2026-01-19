@@ -388,6 +388,7 @@ const inspectionService = {
 
   /**
    * Get properties for a schedule's region with recipient info
+   * Only returns properties that have at least one INCOMPLETE task
    */
   async getScheduleProperties(scheduleId) {
     const schedule = await inspectionScheduleRepository.findById(scheduleId);
@@ -395,15 +396,12 @@ const inspectionService = {
       throw new NotFoundError('Schedule not found');
     }
 
-    // Get properties in the same region
-    const result = await propertyRepository.findAll({
-      region: schedule.region,
-      take: 1000, // Get all properties
-    });
+    // Get only properties in the same region that have at least one INCOMPLETE task
+    const properties = await propertyRepository.findByRegionWithIncompleteTasks(schedule.region);
 
     // Process each property to get recipient info
     const propertiesWithRecipient = await Promise.all(
-      result.properties.map(async (property) => {
+      properties.map(async (property) => {
         // Determine recipient: 1) Property contacts, 2) Agency users
         let recipient = null;
         let recipientType = null;
@@ -516,7 +514,8 @@ const inspectionService = {
 
   /**
    * Preview recipients by region (before creating schedules)
-   * Shows all properties in the region and who will receive booking invitations
+   * Shows all properties in the region that have INCOMPLETE tasks
+   * and who will receive booking invitations
    */
   async previewRecipientsByRegion(region) {
     // Validate region
@@ -524,15 +523,12 @@ const inspectionService = {
       throw new ValidationError('Invalid region');
     }
 
-    // Get all properties in the region
-    const result = await propertyRepository.findAll({
-      region: region,
-      take: 1000,
-    });
+    // Get only properties in the region that have at least one INCOMPLETE task
+    const properties = await propertyRepository.findByRegionWithIncompleteTasks(region);
 
     // Process each property to get all potential recipients
     const propertiesWithRecipients = await Promise.all(
-      result.properties.map(async (property) => {
+      properties.map(async (property) => {
         const recipients = [];
 
         // 1. Get ALL property contacts with email

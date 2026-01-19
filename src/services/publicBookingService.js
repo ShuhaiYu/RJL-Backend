@@ -4,6 +4,7 @@
  * Business logic for public booking endpoints (no authentication required).
  */
 
+const prisma = require('../config/prisma');
 const inspectionNotificationRepository = require('../repositories/inspectionNotificationRepository');
 const inspectionBookingRepository = require('../repositories/inspectionBookingRepository');
 const inspectionSlotRepository = require('../repositories/inspectionSlotRepository');
@@ -141,6 +142,19 @@ const publicBookingService = {
     const slotAvailable = await inspectionSlotRepository.checkAvailability(data.slot_id);
     if (!slotAvailable) {
       throw new ValidationError('This time slot is no longer available');
+    }
+
+    // Check if the property already has PROCESSING tasks (inspection already scheduled)
+    const processingTask = await prisma.task.findFirst({
+      where: {
+        propertyId: notification.propertyId,
+        status: 'PROCESSING',
+        isActive: true,
+      },
+    });
+
+    if (processingTask) {
+      throw new ConflictError('An inspection has already been scheduled for this property');
     }
 
     // Determine booker information from the notification

@@ -177,6 +177,36 @@ const propertyRepository = {
       data: { region },
     });
   },
+
+  /**
+   * Find properties in a region that have at least one INCOMPLETE task
+   * Used for inspection scheduling - only properties needing inspection
+   */
+  async findByRegionWithIncompleteTasks(region) {
+    return prisma.property.findMany({
+      where: {
+        region: region,
+        isActive: true,
+        tasks: {
+          some: {
+            status: 'INCOMPLETE',
+            isActive: true,
+          },
+        },
+      },
+      include: {
+        user: {
+          include: {
+            agency: true,
+          },
+        },
+        contacts: {
+          where: { isActive: true },
+        },
+      },
+      orderBy: { id: 'desc' },
+    });
+  },
 };
 
 module.exports = propertyRepository;

@@ -5,6 +5,7 @@
  */
 
 const nodemailer = require('nodemailer');
+const prisma = require('../config/prisma');
 const inspectionNotificationRepository = require('../repositories/inspectionNotificationRepository');
 const inspectionScheduleRepository = require('../repositories/inspectionScheduleRepository');
 const propertyRepository = require('../repositories/propertyRepository');
@@ -13,8 +14,67 @@ const userRepository = require('../repositories/userRepository');
 const systemSettingsRepository = require('../repositories/systemSettingsRepository');
 const { generateBookingToken, getTokenExpiryDate } = require('../lib/tokenGenerator');
 const { NotFoundError, ValidationError } = require('../lib/errors');
-const { REGION_LABELS } = require('../config/constants');
 const logger = require('../lib/logger');
+
+// Transporter cache for connection reuse
+let cachedTransporter = null;
+let transporterSettingsHash = null;
+
+/**
+ * Get or create a cached SMTP transporter with connection pooling
+ */
+function getTransporter(emailSettings) {
+  const settingsHash = `${emailSettings.host}:${emailSettings.user}`;
+
+  // Reuse existing transporter if settings haven't changed
+  if (cachedTransporter && transporterSettingsHash === settingsHash) {
+    return cachedTransporter;
+  }
+
+  // Close existing transporter if it exists
+  if (cachedTransporter) {
+    cachedTransporter.close();
+  }
+
+  cachedTransporter = nodemailer.createTransport({
+    host: emailSettings.host || 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    auth: {
+      user: emailSettings.user,
+      pass: emailSettings.password,
+    },
+    pool: true, // Enable connection pooling
+    maxConnections: 5, // Max concurrent connections
+    maxMessages: 100, // Max messages per connection
+  });
+
+  transporterSettingsHash = settingsHash;
+  return cachedTransporter;
+}
+
+/**
+ * Send emails in batches with controlled concurrency
+ */
+async function sendInBatches(emailTasks, concurrency = 5) {
+  const results = [];
+
+  for (let i = 0; i < emailTasks.length; i += concurrency) {
+    const batch = emailTasks.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(batch.map((task) => task()));
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
+// Task type labels for email display
+const TASK_TYPE_LABELS = {
+  'smoke alarm': 'Smoke Alarm',
+  'gas/electric': 'Gas & Electricity',
+  'pool safety': 'Pool Safety',
+  'unknown': 'Safety Check',
+};
 
 // Frontend URL for booking links
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -23,6 +83,7 @@ const inspectionNotificationService = {
   /**
    * Send booking invitations to multiple properties (multi-recipient)
    * For each property, sends to ALL contacts with email AND ALL agency users
+   * Optimized for parallel sending with connection pooling
    */
   async sendNotifications(scheduleId, propertyIds) {
     const schedule = await inspectionScheduleRepository.findById(scheduleId);
@@ -30,11 +91,23 @@ const inspectionNotificationService = {
       throw new NotFoundError('Schedule not found');
     }
 
+    // Get email settings ONCE at the beginning
+    const emailSettings = await systemSettingsRepository.getEmailSettings();
+    if (!emailSettings || !emailSettings.user) {
+      throw new Error('Email settings not configured');
+    }
+
+    // Get cached transporter with connection pooling
+    const transporter = getTransporter(emailSettings);
+
     const results = {
       success: [],
       failed: [],
       skipped: [],
     };
+
+    // Phase 1: Collect all recipients data (still sequential for data integrity)
+    const emailTasks = [];
 
     for (const propertyId of propertyIds) {
       try {
@@ -84,6 +157,17 @@ const inspectionNotificationService = {
           }
         }
 
+        // 3. Get property tasks to include inspection types in email
+        const propertyTasks = await prisma.task.findMany({
+          where: {
+            propertyId,
+            isActive: true,
+            status: { in: ['INCOMPLETE', 'UNKNOWN'] },
+          },
+          select: { type: true },
+        });
+        const inspectionTypes = [...new Set(propertyTasks.map((t) => t.type).filter(Boolean))];
+
         if (recipients.length === 0) {
           results.failed.push({
             property_id: propertyId,
@@ -92,73 +176,37 @@ const inspectionNotificationService = {
           continue;
         }
 
-        // Send to each recipient
+        // Check duplicates and prepare email tasks
         for (const recipient of recipients) {
-          try {
-            // Check if this email already received notification for this schedule
-            const alreadySent = await inspectionNotificationRepository.existsForEmailAndSchedule(
-              recipient.email,
-              scheduleId
-            );
-            if (alreadySent) {
-              results.skipped.push({
-                property_id: propertyId,
-                recipient_email: recipient.email,
-                recipient_name: recipient.name,
-                recipient_type: recipient.type,
-                reason: 'Already notified for this schedule',
-              });
-              continue;
-            }
-
-            // Generate independent token for this recipient
-            const token = generateBookingToken();
-            const sent = await this.sendBookingInvitation(
-              recipient,
-              property,
-              schedule,
-              token
-            );
-
-            if (sent) {
-              // Save notification record with recipient type
-              await inspectionNotificationRepository.create({
-                schedule_id: scheduleId,
-                property_id: propertyId,
-                contact_id: recipient.contactId,
-                user_id: recipient.userId,
-                recipient_type: recipient.type,
-                recipient_email: recipient.email,
-                booking_token: token,
-                status: 'sent',
-              });
-
-              results.success.push({
-                property_id: propertyId,
-                recipient_email: recipient.email,
-                recipient_name: recipient.name,
-                recipient_type: recipient.type,
-                recipient_role: recipient.role || null,
-              });
-            } else {
-              results.failed.push({
-                property_id: propertyId,
-                recipient_email: recipient.email,
-                error: 'Failed to send email',
-              });
-            }
-          } catch (emailError) {
-            logger.error('Failed to send notification to recipient', {
-              propertyId,
-              email: recipient.email,
-              error: emailError.message,
-            });
-            results.failed.push({
+          // Check if this email already received notification for this schedule
+          const alreadySent = await inspectionNotificationRepository.existsForEmailAndSchedule(
+            recipient.email,
+            scheduleId
+          );
+          if (alreadySent) {
+            results.skipped.push({
               property_id: propertyId,
               recipient_email: recipient.email,
-              error: emailError.message,
+              recipient_name: recipient.name,
+              recipient_type: recipient.type,
+              reason: 'Already notified for this schedule',
             });
+            continue;
           }
+
+          // Generate independent token for this recipient
+          const token = generateBookingToken();
+
+          // Queue email task for parallel sending
+          emailTasks.push({
+            recipient,
+            property,
+            schedule,
+            token,
+            inspectionTypes,
+            propertyId,
+            scheduleId,
+          });
         }
       } catch (error) {
         logger.error('Failed to process property for notifications', {
@@ -172,14 +220,107 @@ const inspectionNotificationService = {
       }
     }
 
+    // Phase 2: Send all emails in parallel batches
+    if (emailTasks.length > 0) {
+      logger.info('Starting parallel email sending', {
+        scheduleId,
+        totalEmails: emailTasks.length,
+      });
+
+      const sendResults = await sendInBatches(
+        emailTasks.map((task) => async () => {
+          try {
+            const sent = await this.sendBookingInvitation(
+              task.recipient,
+              task.property,
+              task.schedule,
+              task.token,
+              task.inspectionTypes,
+              transporter,
+              emailSettings
+            );
+
+            if (sent) {
+              // Save notification record
+              await inspectionNotificationRepository.create({
+                schedule_id: task.scheduleId,
+                property_id: task.propertyId,
+                contact_id: task.recipient.contactId,
+                user_id: task.recipient.userId,
+                recipient_type: task.recipient.type,
+                recipient_email: task.recipient.email,
+                booking_token: task.token,
+                status: 'sent',
+              });
+
+              return { success: true, task };
+            } else {
+              return { success: false, task, error: 'Failed to send email' };
+            }
+          } catch (error) {
+            return { success: false, task, error: error.message };
+          }
+        }),
+        5 // Concurrency limit
+      );
+
+      // Process results
+      for (const result of sendResults) {
+        if (result.status === 'fulfilled') {
+          const { success, task, error } = result.value;
+          if (success) {
+            results.success.push({
+              property_id: task.propertyId,
+              recipient_email: task.recipient.email,
+              recipient_name: task.recipient.name,
+              recipient_type: task.recipient.type,
+              recipient_role: task.recipient.role || null,
+            });
+          } else {
+            results.failed.push({
+              property_id: task.propertyId,
+              recipient_email: task.recipient.email,
+              error: error,
+            });
+          }
+        } else {
+          // Promise was rejected (should not happen with our error handling)
+          logger.error('Email task promise rejected', { reason: result.reason });
+        }
+      }
+
+      logger.info('Parallel email sending completed', {
+        scheduleId,
+        success: results.success.length,
+        failed: results.failed.length,
+        skipped: results.skipped.length,
+      });
+    }
+
     return results;
   },
 
   /**
    * Send booking invitation email to a contact
+   * @param {Object} contact - Recipient info
+   * @param {Object} property - Property info
+   * @param {Object} schedule - Schedule info
+   * @param {string} token - Booking token
+   * @param {Array} inspectionTypes - Types of inspections
+   * @param {Object} existingTransporter - Optional: reuse existing transporter
+   * @param {Object} existingEmailSettings - Optional: reuse existing email settings
    */
-  async sendBookingInvitation(contact, property, schedule, token) {
-    const emailSettings = await systemSettingsRepository.getEmailSettings();
+  async sendBookingInvitation(
+    contact,
+    property,
+    schedule,
+    token,
+    inspectionTypes = [],
+    existingTransporter = null,
+    existingEmailSettings = null
+  ) {
+    // Use provided settings or fetch new ones
+    const emailSettings = existingEmailSettings || await systemSettingsRepository.getEmailSettings();
     if (!emailSettings || !emailSettings.user) {
       throw new Error('Email settings not configured');
     }
@@ -192,21 +333,14 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    const transporter = nodemailer.createTransport({
-      host: emailSettings.host || 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: emailSettings.user,
-        pass: emailSettings.password,
-      },
-    });
+    // Use provided transporter or create/get cached one
+    const transporter = existingTransporter || getTransporter(emailSettings);
 
     const mailOptions = {
-      from: `"Property Inspection" <${emailSettings.user}>`,
+      from: `"Safety Check Inspection" <${emailSettings.user}>`,
       to: contact.email,
-      subject: `Property Inspection Notice - ${property.address}`,
-      html: this.generateEmailTemplate(contact, property, schedule, scheduleDate, bookingLink),
+      subject: `Safety Check Inspection - ${property.address}`,
+      html: this.generateEmailTemplate(contact, property, schedule, scheduleDate, bookingLink, inspectionTypes),
     };
 
     try {
@@ -239,15 +373,8 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    const transporter = nodemailer.createTransport({
-      host: emailSettings.host || 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: emailSettings.user,
-        pass: emailSettings.password,
-      },
-    });
+    // Use cached transporter with connection pooling
+    const transporter = getTransporter(emailSettings);
 
     const mailOptions = {
       from: `"Property Inspection" <${emailSettings.user}>`,
@@ -269,6 +396,7 @@ const inspectionNotificationService = {
   /**
    * Send confirmation emails to ALL recipients who received invitations for this property
    * This ensures everyone knows the final booking result
+   * Optimized for parallel sending
    */
   async sendConfirmationToAllRecipients(booking) {
     const emailSettings = await systemSettingsRepository.getEmailSettings();
@@ -293,21 +421,15 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    const transporter = nodemailer.createTransport({
-      host: emailSettings.host || 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: emailSettings.user,
-        pass: emailSettings.password,
-      },
-    });
+    // Use cached transporter with connection pooling
+    const transporter = getTransporter(emailSettings);
 
     let sent = 0;
     let failed = 0;
 
-    for (const recipient of recipients) {
-      try {
+    // Send emails in parallel batches
+    const sendResults = await sendInBatches(
+      recipients.map((recipient) => async () => {
         const recipientName = recipient.contact?.name || recipient.user?.name || 'Recipient';
         const mailOptions = {
           from: `"Property Inspection" <${emailSettings.user}>`,
@@ -317,16 +439,23 @@ const inspectionNotificationService = {
         };
 
         await transporter.sendMail(mailOptions);
-        sent++;
         logger.info('Confirmation email sent to recipient', {
           bookingId: booking.id,
           email: recipient.recipientEmail,
         });
-      } catch (error) {
+        return { success: true, email: recipient.recipientEmail };
+      }),
+      5 // Concurrency limit
+    );
+
+    // Process results
+    for (const result of sendResults) {
+      if (result.status === 'fulfilled') {
+        sent++;
+      } else {
         failed++;
         logger.error('Failed to send confirmation email to recipient', {
-          email: recipient.recipientEmail,
-          error: error.message,
+          error: result.reason?.message || result.reason,
         });
       }
     }
@@ -362,15 +491,8 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    const transporter = nodemailer.createTransport({
-      host: emailSettings.host || 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: emailSettings.user,
-        pass: emailSettings.password,
-      },
-    });
+    // Use cached transporter with connection pooling
+    const transporter = getTransporter(emailSettings);
 
     const mailOptions = {
       from: `"Property Inspection" <${emailSettings.user}>`,
@@ -410,15 +532,8 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    const transporter = nodemailer.createTransport({
-      host: emailSettings.host || 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: emailSettings.user,
-        pass: emailSettings.password,
-      },
-    });
+    // Use cached transporter with connection pooling
+    const transporter = getTransporter(emailSettings);
 
     const mailOptions = {
       from: `"Property Inspection" <${emailSettings.user}>`,
@@ -441,8 +556,6 @@ const inspectionNotificationService = {
    * Generate confirmation email HTML template
    */
   generateConfirmationTemplate(booking, scheduleDate) {
-    const regionLabel = REGION_LABELS[booking.slot.schedule.region] || booking.slot.schedule.region;
-
     return `
 <!DOCTYPE html>
 <html>
@@ -485,10 +598,7 @@ const inspectionNotificationService = {
                     <p style="margin: 0 0 16px; color: #111827; font-size: 16px; font-weight: bold;">${scheduleDate}</p>
 
                     <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Time Slot:</p>
-                    <p style="margin: 0 0 16px; color: #111827; font-size: 16px; font-weight: bold;">${booking.slot.startTime} - ${booking.slot.endTime}</p>
-
-                    <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Region:</p>
-                    <p style="margin: 0; color: #111827; font-size: 16px; font-weight: bold;">${regionLabel}</p>
+                    <p style="margin: 0; color: #111827; font-size: 16px; font-weight: bold;">${booking.slot.startTime} - ${booking.slot.endTime}</p>
                   </td>
                 </tr>
               </table>
@@ -527,7 +637,6 @@ const inspectionNotificationService = {
    * Used when sending to all recipients to show who made the booking
    */
   generateConfirmationTemplateWithBooker(booking, scheduleDate, recipientName) {
-    const regionLabel = REGION_LABELS[booking.slot.schedule.region] || booking.slot.schedule.region;
 
     // Determine booker information
     let bookerName = booking.contactName || 'Unknown';
@@ -583,9 +692,6 @@ const inspectionNotificationService = {
                     <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Time Slot:</p>
                     <p style="margin: 0 0 16px; color: #111827; font-size: 16px; font-weight: bold;">${booking.slot.startTime} - ${booking.slot.endTime}</p>
 
-                    <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Region:</p>
-                    <p style="margin: 0 0 16px; color: #111827; font-size: 16px; font-weight: bold;">${regionLabel}</p>
-
                     <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Booked By:</p>
                     <p style="margin: 0; color: #111827; font-size: 16px; font-weight: bold;">${bookerName} <span style="color: #6b7280; font-weight: normal;">(${bookerTypeLabel})</span></p>
                   </td>
@@ -625,8 +731,6 @@ const inspectionNotificationService = {
    * Generate rejection email HTML template
    */
   generateRejectionTemplate(booking, scheduleDate) {
-    const regionLabel = REGION_LABELS[booking.slot.schedule.region] || booking.slot.schedule.region;
-
     return `
 <!DOCTYPE html>
 <html>
@@ -707,8 +811,6 @@ const inspectionNotificationService = {
    * Generate reschedule email HTML template
    */
   generateRescheduleTemplate(booking, scheduleDate, oldSlot) {
-    const regionLabel = REGION_LABELS[booking.slot.schedule.region] || booking.slot.schedule.region;
-
     return `
 <!DOCTYPE html>
 <html>
@@ -763,10 +865,7 @@ const inspectionNotificationService = {
                     <p style="margin: 0 0 16px; color: #111827; font-size: 16px; font-weight: bold;">${scheduleDate}</p>
 
                     <p style="margin: 0 0 8px; color: #10B981; font-size: 14px; font-weight: bold;">New Time Slot:</p>
-                    <p style="margin: 0 0 16px; color: #111827; font-size: 18px; font-weight: bold;">${booking.slot.startTime} - ${booking.slot.endTime}</p>
-
-                    <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Region:</p>
-                    <p style="margin: 0; color: #111827; font-size: 16px; font-weight: bold;">${regionLabel}</p>
+                    <p style="margin: 0; color: #111827; font-size: 18px; font-weight: bold;">${booking.slot.startTime} - ${booking.slot.endTime}</p>
                   </td>
                 </tr>
               </table>
@@ -803,8 +902,14 @@ const inspectionNotificationService = {
   /**
    * Generate email HTML template
    */
-  generateEmailTemplate(contact, property, schedule, scheduleDate, bookingLink) {
-    const regionLabel = REGION_LABELS[schedule.region] || schedule.region;
+  generateEmailTemplate(contact, property, schedule, scheduleDate, bookingLink, inspectionTypes = []) {
+    // Format inspection types for display
+    const typeLabels = inspectionTypes
+      .map((type) => TASK_TYPE_LABELS[type] || type)
+      .filter(Boolean);
+    const inspectionTypesText = typeLabels.length > 0
+      ? typeLabels.join(', ')
+      : 'Safety Check';
 
     return `
 <!DOCTYPE html>
@@ -812,7 +917,7 @@ const inspectionNotificationService = {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Property Inspection Notice</title>
+  <title>Safety Check Inspection</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
   <table role="presentation" style="width: 100%; border-collapse: collapse;">
@@ -822,7 +927,7 @@ const inspectionNotificationService = {
           <!-- Header -->
           <tr>
             <td style="padding: 40px 40px 30px; text-align: center; background-color: #4F46E5; border-radius: 8px 8px 0 0;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px;">Property Inspection Notice</h1>
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px;">Safety Check Inspection</h1>
             </td>
           </tr>
 
@@ -834,7 +939,7 @@ const inspectionNotificationService = {
               </p>
 
               <p style="margin: 0 0 20px; color: #374151; font-size: 16px;">
-                We would like to inform you that a routine inspection has been scheduled for your property.
+                We would like to inform you that a safety check inspection has been scheduled for your property.
               </p>
 
               <!-- Property Info -->
@@ -847,8 +952,8 @@ const inspectionNotificationService = {
                     <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Inspection Date:</p>
                     <p style="margin: 0 0 16px; color: #111827; font-size: 16px; font-weight: bold;">${scheduleDate}</p>
 
-                    <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Region:</p>
-                    <p style="margin: 0; color: #111827; font-size: 16px; font-weight: bold;">${regionLabel}</p>
+                    <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Inspection Type:</p>
+                    <p style="margin: 0; color: #111827; font-size: 16px; font-weight: bold;">${inspectionTypesText}</p>
                   </td>
                 </tr>
               </table>
