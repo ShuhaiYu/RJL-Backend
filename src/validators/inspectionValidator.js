@@ -52,6 +52,21 @@ const createScheduleSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
+// Create batch schedule schema (multiple dates)
+const createBatchScheduleSchema = z.object({
+  region: z.enum(regionValues, { errorMap: () => ({ message: 'Invalid region' }) }),
+  dates: z.array(
+    z.string().refine((val) => !isNaN(Date.parse(val)), {
+      message: 'Invalid date format',
+    })
+  ).min(1, 'At least one date is required').max(30, 'Maximum 30 dates allowed'),
+  start_time: z.string().regex(timeRegex, 'Invalid time format (HH:MM)').optional(),
+  end_time: z.string().regex(timeRegex, 'Invalid time format (HH:MM)').optional(),
+  slot_duration: z.number().int().min(15).max(480).optional(),
+  max_capacity: z.number().int().min(1).max(20).optional(),
+  note: z.string().max(500).optional(),
+});
+
 // Update schedule schema
 const updateScheduleSchema = z.object({
   status: z.enum(scheduleStatusValues).optional(),
@@ -137,6 +152,7 @@ module.exports = {
   updateConfigSchema,
   // Schedule
   createScheduleSchema,
+  createBatchScheduleSchema,
   updateScheduleSchema,
   scheduleIdParamSchema,
   listSchedulesQuerySchema,

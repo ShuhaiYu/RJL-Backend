@@ -79,6 +79,18 @@ const inspectionSlotRepository = {
   },
 
   /**
+   * Decrement slot booking count (with transaction support)
+   */
+  async decrementBookingsWithTx(tx, id) {
+    return tx.inspectionSlot.update({
+      where: { id },
+      data: {
+        currentBookings: { decrement: 1 },
+      },
+    });
+  },
+
+  /**
    * Update slot availability
    */
   async updateAvailability(id, isAvailable) {

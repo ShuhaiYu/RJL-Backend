@@ -4,6 +4,7 @@
  * Business logic for admin booking management.
  */
 
+const prisma = require('../config/prisma');
 const inspectionBookingRepository = require('../repositories/inspectionBookingRepository');
 const inspectionSlotRepository = require('../repositories/inspectionSlotRepository');
 const inspectionNotificationService = require('./inspectionNotificationService');
@@ -35,7 +36,7 @@ const inspectionBookingService = {
   },
 
   /**
-   * Confirm a booking
+   * Confirm a booking (auto-rejects other pending bookings for the same property)
    */
   async confirmBooking(id, data, userId) {
     const booking = await inspectionBookingRepository.findById(id);
@@ -47,19 +48,67 @@ const inspectionBookingService = {
       throw new ValidationError(`Cannot confirm a booking with status: ${booking.status}`);
     }
 
-    const updated = await inspectionBookingRepository.updateStatus(id, 'confirmed', userId);
+    // Use transaction to ensure atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Confirm the selected booking
+      const confirmed = await inspectionBookingRepository.updateStatusWithTx(tx, id, 'confirmed', userId);
 
-    // Send confirmation email if requested
+      // 2. Find other pending bookings for the same property
+      const otherPending = await tx.inspectionBooking.findMany({
+        where: {
+          propertyId: booking.propertyId,
+          status: 'pending',
+          id: { not: id },
+        },
+        include: {
+          slot: true,
+        },
+      });
+
+      // 3. Auto-reject other pending bookings (without sending notifications)
+      const autoRejected = [];
+      for (const other of otherPending) {
+        // Decrement slot booking count
+        await tx.inspectionSlot.update({
+          where: { id: other.slotId },
+          data: { currentBookings: { decrement: 1 } },
+        });
+
+        // Update status to rejected
+        await tx.inspectionBooking.update({
+          where: { id: other.id },
+          data: { status: 'rejected' },
+        });
+
+        autoRejected.push(other.id);
+        logger.info('Auto-rejected booking', {
+          bookingId: other.id,
+          propertyId: booking.propertyId,
+          confirmedBookingId: id,
+        });
+      }
+
+      return { confirmed, autoRejectedCount: autoRejected.length };
+    });
+
+    // Send confirmation emails to ALL recipients if requested
     if (data.send_notification) {
       try {
-        await inspectionNotificationService.sendConfirmationEmail(updated);
+        // Fetch the updated booking with full relations for email
+        const fullBooking = await inspectionBookingRepository.findById(id);
+        await inspectionNotificationService.sendConfirmationToAllRecipients(fullBooking);
       } catch (error) {
-        logger.error('Failed to send confirmation email', { bookingId: id, error: error.message });
+        logger.error('Failed to send confirmation emails', { bookingId: id, error: error.message });
         // Don't fail the confirmation if email fails
       }
     }
 
-    return this.formatBookingDetail(updated);
+    // Fetch and return the confirmed booking
+    const finalBooking = await inspectionBookingRepository.findById(id);
+    const formatted = this.formatBookingDetail(finalBooking);
+    formatted.auto_rejected_count = result.autoRejectedCount;
+
+    return formatted;
   },
 
   /**
@@ -142,12 +191,35 @@ const inspectionBookingService = {
    * Format booking for list view
    */
   formatBooking(booking) {
+    // Determine booker info
+    let bookedBy = null;
+    if (booking.bookerType) {
+      if (booking.bookerType === 'agencyUser' && booking.bookedByUser) {
+        bookedBy = {
+          type: 'agencyUser',
+          type_label: 'Agency Staff',
+          name: booking.bookedByUser.name,
+          email: booking.bookedByUser.email,
+          role: booking.bookedByUser.role,
+        };
+      } else if (booking.bookerType === 'contact') {
+        bookedBy = {
+          type: 'contact',
+          type_label: 'Property Contact',
+          name: booking.contactName,
+          email: booking.contactEmail,
+        };
+      }
+    }
+
     return {
       id: booking.id,
       status: booking.status,
       contact_name: booking.contactName,
       contact_phone: booking.contactPhone,
       contact_email: booking.contactEmail,
+      booker_type: booking.bookerType,
+      booked_by: bookedBy,
       slot: {
         id: booking.slot.id,
         start_time: booking.slot.startTime,
@@ -171,12 +243,35 @@ const inspectionBookingService = {
    * Format booking for detail view
    */
   formatBookingDetail(booking) {
+    // Determine booker info
+    let bookedBy = null;
+    if (booking.bookerType) {
+      if (booking.bookerType === 'agencyUser' && booking.bookedByUser) {
+        bookedBy = {
+          type: 'agencyUser',
+          type_label: 'Agency Staff',
+          name: booking.bookedByUser.name,
+          email: booking.bookedByUser.email,
+          role: booking.bookedByUser.role,
+        };
+      } else if (booking.bookerType === 'contact') {
+        bookedBy = {
+          type: 'contact',
+          type_label: 'Property Contact',
+          name: booking.contactName,
+          email: booking.contactEmail,
+        };
+      }
+    }
+
     return {
       id: booking.id,
       status: booking.status,
       contact_name: booking.contactName,
       contact_phone: booking.contactPhone,
       contact_email: booking.contactEmail,
+      booker_type: booking.bookerType,
+      booked_by: bookedBy,
       note: booking.note,
       slot: {
         id: booking.slot.id,

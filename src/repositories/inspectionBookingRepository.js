@@ -24,6 +24,9 @@ const inspectionBookingRepository = {
         confirmer: {
           select: { id: true, name: true },
         },
+        bookedByUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
   },
@@ -108,6 +111,9 @@ const inspectionBookingRepository = {
           contact: {
             select: { id: true, name: true, email: true, phone: true },
           },
+          bookedByUser: {
+            select: { id: true, name: true, email: true, role: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -151,6 +157,8 @@ const inspectionBookingRepository = {
         propertyId: data.property_id,
         taskId: data.task_id,
         contactId: data.contact_id,
+        bookedByUserId: data.booked_by_user_id,
+        bookerType: data.booker_type,
         contactName: data.contact_name,
         contactPhone: data.contact_phone,
         contactEmail: data.contact_email,
@@ -166,6 +174,62 @@ const inspectionBookingRepository = {
           },
         },
         property: true,
+        bookedByUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+  },
+
+  /**
+   * Find pending bookings for a property, excluding a specific booking ID
+   */
+  async findPendingByPropertyExcluding(propertyId, excludeId) {
+    return prisma.inspectionBooking.findMany({
+      where: {
+        propertyId,
+        status: 'pending',
+        id: { not: excludeId },
+      },
+      include: {
+        slot: {
+          include: {
+            schedule: true,
+          },
+        },
+        property: true,
+        contact: true,
+        bookedByUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+  },
+
+  /**
+   * Update booking status (with transaction support)
+   */
+  async updateStatusWithTx(tx, id, status, confirmedBy = null) {
+    const updateData = { status };
+    if (confirmedBy) {
+      updateData.confirmedBy = confirmedBy;
+      updateData.confirmedAt = new Date();
+    }
+
+    return tx.inspectionBooking.update({
+      where: { id },
+      data: updateData,
+      include: {
+        slot: {
+          include: {
+            schedule: true,
+          },
+        },
+        property: true,
+        contact: true,
+        bookedByUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
   },
@@ -191,6 +255,9 @@ const inspectionBookingRepository = {
         },
         property: true,
         contact: true,
+        bookedByUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
   },

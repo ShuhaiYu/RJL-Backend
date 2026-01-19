@@ -565,6 +565,18 @@ router.post('/inspection/schedules',
   inspectionController.createSchedule
 );
 
+router.post('/inspection/schedules/batch',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('create', 'inspection'),
+  inspectionController.createBatchSchedule
+);
+
+router.get('/inspection/preview-recipients/:region',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'inspection'),
+  inspectionController.previewRecipientsByRegion
+);
+
 router.get('/inspection/schedules/:id',
   authMiddleware.authenticateToken,
   authMiddleware.requirePermission('read', 'inspection'),

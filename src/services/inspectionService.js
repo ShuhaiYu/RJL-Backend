@@ -174,6 +174,113 @@ const inspectionService = {
   },
 
   /**
+   * Create multiple schedules for multiple dates (batch creation)
+   */
+  async createMultipleSchedules(data, userId) {
+    const results = {
+      created: [],
+      skipped: [],
+      failed: [],
+    };
+
+    // Validate region
+    if (!Object.values(REGION).includes(data.region)) {
+      throw new ValidationError('Invalid region');
+    }
+
+    if (!data.dates || !Array.isArray(data.dates) || data.dates.length === 0) {
+      throw new ValidationError('At least one date is required');
+    }
+
+    // Get config for region to use defaults
+    const config = await inspectionConfigRepository.findByRegion(data.region);
+
+    // Use provided values or defaults from config
+    const startTime = data.start_time || (config?.startTime);
+    const endTime = data.end_time || (config?.endTime);
+    const slotDuration = data.slot_duration || (config?.slotDuration);
+    const maxCapacity = data.max_capacity || (config?.maxCapacity) || 1;
+
+    if (!startTime || !endTime || !slotDuration) {
+      throw new ValidationError(
+        `Time settings are required for ${data.region} region. Please configure the region first.`
+      );
+    }
+
+    // Validate time settings once (same for all dates)
+    const startMinutes = this.parseTime(startTime);
+    const endMinutes = this.parseTime(endTime);
+
+    if (endMinutes <= startMinutes) {
+      throw new ValidationError(
+        `Invalid time range: end_time (${endTime}) must be after start_time (${startTime})`
+      );
+    }
+
+    if (slotDuration < 15) {
+      throw new ValidationError(
+        `Invalid slot duration: ${slotDuration} minutes is too short. Minimum is 15 minutes.`
+      );
+    }
+
+    // Generate slots template (same for all dates)
+    const slotsTemplate = this.generateSlots(startTime, endTime, slotDuration, maxCapacity);
+
+    if (slotsTemplate.length === 0) {
+      throw new ValidationError(
+        `Cannot generate time slots with current settings. Please check your time configuration.`
+      );
+    }
+
+    // Process each date
+    for (const scheduleDate of data.dates) {
+      try {
+        // Check for existing schedule on this date/region
+        const existing = await inspectionScheduleRepository.findByRegionAndDate(
+          data.region,
+          scheduleDate
+        );
+
+        if (existing) {
+          results.skipped.push({
+            date: scheduleDate,
+            reason: 'Schedule already exists for this region and date',
+          });
+          continue;
+        }
+
+        // Create schedule with slots
+        const schedule = await inspectionScheduleRepository.create(
+          {
+            region: data.region,
+            schedule_date: scheduleDate,
+            start_time: startTime,
+            end_time: endTime,
+            slot_duration: slotDuration,
+            max_capacity: maxCapacity,
+            note: data.note,
+            created_by: userId,
+          },
+          slotsTemplate
+        );
+
+        results.created.push({
+          id: schedule.id,
+          date: scheduleDate,
+          slots_count: schedule.slots?.length || slotsTemplate.length,
+        });
+      } catch (error) {
+        results.failed.push({
+          date: scheduleDate,
+          error: error.message,
+        });
+      }
+    }
+
+    return results;
+  },
+
+  /**
    * Create a new schedule
    */
   async createSchedule(data, userId) {
@@ -404,6 +511,84 @@ const inspectionService = {
         status: n.status,
         sent_at: n.sentAt,
       })),
+    };
+  },
+
+  /**
+   * Preview recipients by region (before creating schedules)
+   * Shows all properties in the region and who will receive booking invitations
+   */
+  async previewRecipientsByRegion(region) {
+    // Validate region
+    if (!Object.values(REGION).includes(region)) {
+      throw new ValidationError('Invalid region');
+    }
+
+    // Get all properties in the region
+    const result = await propertyRepository.findAll({
+      region: region,
+      take: 1000,
+    });
+
+    // Process each property to get all potential recipients
+    const propertiesWithRecipients = await Promise.all(
+      result.properties.map(async (property) => {
+        const recipients = [];
+
+        // 1. Get ALL property contacts with email
+        const contacts = await contactRepository.findByPropertyId(property.id);
+        const contactsWithEmail = contacts?.filter((c) => c.email) || [];
+        for (const contact of contactsWithEmail) {
+          recipients.push({
+            name: contact.name,
+            email: contact.email,
+            type: 'contact',
+          });
+        }
+
+        // 2. Get ALL agency users
+        const agencyId = property.user?.agency?.id || property.user?.agencyId;
+        if (agencyId) {
+          const agencyUsers = await userRepository.findByAgencyIdWithPriority(agencyId);
+          for (const user of agencyUsers) {
+            if (user.email) {
+              recipients.push({
+                name: user.name,
+                email: user.email,
+                type: 'agencyUser',
+                role: user.role,
+              });
+            }
+          }
+        }
+
+        return {
+          id: property.id,
+          address: property.address,
+          agency_name: property.user?.agency?.name || null,
+          recipients,
+          recipient_count: recipients.length,
+          has_recipients: recipients.length > 0,
+        };
+      })
+    );
+
+    // Calculate summary
+    const totalProperties = propertiesWithRecipients.length;
+    const propertiesWithRecipient = propertiesWithRecipients.filter((p) => p.has_recipients).length;
+    const propertiesWithoutRecipient = totalProperties - propertiesWithRecipient;
+    const totalRecipients = propertiesWithRecipients.reduce((sum, p) => sum + p.recipient_count, 0);
+
+    return {
+      region,
+      region_label: REGION_LABELS[region],
+      summary: {
+        total_properties: totalProperties,
+        properties_with_recipients: propertiesWithRecipient,
+        properties_without_recipients: propertiesWithoutRecipient,
+        total_recipients: totalRecipients,
+      },
+      properties: propertiesWithRecipients,
     };
   },
 };

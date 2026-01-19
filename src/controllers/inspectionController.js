@@ -13,6 +13,7 @@ const {
   regionParamSchema,
   updateConfigSchema,
   createScheduleSchema,
+  createBatchScheduleSchema,
   updateScheduleSchema,
   scheduleIdParamSchema,
   listSchedulesQuerySchema,
@@ -100,6 +101,37 @@ const inspectionController = {
         message: 'Schedule created successfully',
         data: schedule,
       }, 201);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * POST /api/inspection/schedules/batch
+   * Create multiple schedules for multiple dates
+   */
+  async createBatchSchedule(req, res, next) {
+    try {
+      const data = createBatchScheduleSchema.parse(req.body);
+      const result = await inspectionService.createMultipleSchedules(data, req.user.user_id);
+      sendSuccess(res, {
+        message: `Schedules created: ${result.created.length} success, ${result.skipped.length} skipped, ${result.failed.length} failed`,
+        data: result,
+      }, 201);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * GET /api/inspection/preview-recipients/:region
+   * Preview recipients by region before creating schedules
+   */
+  async previewRecipientsByRegion(req, res, next) {
+    try {
+      const { region } = regionParamSchema.parse(req.params);
+      const preview = await inspectionService.previewRecipientsByRegion(region);
+      sendSuccess(res, { data: preview });
     } catch (error) {
       next(error);
     }

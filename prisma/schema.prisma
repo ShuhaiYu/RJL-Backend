@@ -193,11 +193,13 @@ model User {
   updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  agency                    Agency?              @relation(fields: [agencyId], references: [id], onUpdate: NoAction, map: "fk_agency")
-  properties                Property[]
-  permissions               UserPermission[]
-  createdInspectionSchedules InspectionSchedule[] @relation("ScheduleCreator")
-  confirmedBookings         InspectionBooking[]  @relation("BookingConfirmer")
+  agency                     Agency?                  @relation(fields: [agencyId], references: [id], onUpdate: NoAction, map: "fk_agency")
+  properties                 Property[]
+  permissions                UserPermission[]
+  createdInspectionSchedules InspectionSchedule[]     @relation("ScheduleCreator")
+  confirmedBookings          InspectionBooking[]      @relation("BookingConfirmer")
+  bookedInspections          InspectionBooking[]      @relation("BookingMadeBy")
+  notificationsReceived      InspectionNotification[]
 
   @@map("USER")
 }
@@ -329,15 +331,18 @@ model InspectionBooking {
   tokenExpiresAt DateTime  @map("token_expires_at") @db.Timestamptz(6) // 14天后过期
   confirmedBy    Int?      @map("confirmed_by")
   confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  bookedByUserId Int?      @map("booked_by_user_id")  // 预约的agency用户ID
+  bookerType     String?   @map("booker_type") @db.VarChar(20) // 'contact' 或 'agencyUser'
   createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime? @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  slot      InspectionSlot @relation(fields: [slotId], references: [id])
-  property  Property       @relation(fields: [propertyId], references: [id])
-  task      Task?          @relation(fields: [taskId], references: [id])
-  contact   Contact?       @relation(fields: [contactId], references: [id])
-  confirmer User?          @relation("BookingConfirmer", fields: [confirmedBy], references: [id])
+  slot         InspectionSlot @relation(fields: [slotId], references: [id])
+  property     Property       @relation(fields: [propertyId], references: [id])
+  task         Task?          @relation(fields: [taskId], references: [id])
+  contact      Contact?       @relation(fields: [contactId], references: [id])
+  confirmer    User?          @relation("BookingConfirmer", fields: [confirmedBy], references: [id])
+  bookedByUser User?          @relation("BookingMadeBy", fields: [bookedByUserId], references: [id])
 
   @@index([bookingToken], map: "idx_booking_token")
   @@index([propertyId], map: "idx_booking_property")
@@ -351,6 +356,8 @@ model InspectionNotification {
   scheduleId     Int       @map("schedule_id")
   propertyId     Int       @map("property_id")
   contactId      Int?      @map("contact_id")
+  userId         Int?      @map("user_id")               // agency用户ID
+  recipientType  String?   @map("recipient_type") @db.VarChar(20) // 'contact' 或 'agencyUser'
   recipientEmail String    @map("recipient_email") @db.VarChar(255)
   bookingToken   String    @map("booking_token") @db.VarChar(64)
   status         String    @default("sent") @db.VarChar(20) // sent, delivered, failed
@@ -361,8 +368,10 @@ model InspectionNotification {
   schedule InspectionSchedule @relation(fields: [scheduleId], references: [id])
   property Property           @relation(fields: [propertyId], references: [id])
   contact  Contact?           @relation(fields: [contactId], references: [id])
+  user     User?              @relation(fields: [userId], references: [id])
 
   @@index([scheduleId], map: "idx_notification_schedule")
   @@index([bookingToken], map: "idx_notification_token")
+  @@index([propertyId, recipientEmail], map: "idx_notification_property_email")
   @@map("INSPECTION_NOTIFICATION")
 }

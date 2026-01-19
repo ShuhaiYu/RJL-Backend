@@ -17,6 +17,9 @@ const inspectionNotificationRepository = {
         schedule: true,
         property: true,
         contact: true,
+        user: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
   },
@@ -36,8 +39,21 @@ const inspectionNotificationRepository = {
             },
           },
         },
-        property: true,
+        property: {
+          include: {
+            user: {
+              include: {
+                agency: {
+                  select: { id: true, agencyName: true },
+                },
+              },
+            },
+          },
+        },
         contact: true,
+        user: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
   },
@@ -71,6 +87,56 @@ const inspectionNotificationRepository = {
   },
 
   /**
+   * Check if notification exists for specific email and schedule
+   */
+  async existsForEmailAndSchedule(email, scheduleId) {
+    const count = await prisma.inspectionNotification.count({
+      where: { recipientEmail: email, scheduleId },
+    });
+    return count > 0;
+  },
+
+  /**
+   * Find all notifications for a property (across all schedules)
+   */
+  async findByPropertyId(propertyId) {
+    return prisma.inspectionNotification.findMany({
+      where: { propertyId },
+      include: {
+        schedule: true,
+        contact: true,
+        user: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  },
+
+  /**
+   * Find all recipients who received notifications for a property
+   */
+  async findRecipientsByPropertyId(propertyId) {
+    return prisma.inspectionNotification.findMany({
+      where: { propertyId },
+      select: {
+        id: true,
+        recipientEmail: true,
+        recipientType: true,
+        contactId: true,
+        userId: true,
+        contact: {
+          select: { id: true, name: true, email: true },
+        },
+        user: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+      distinct: ['recipientEmail'],
+    });
+  },
+
+  /**
    * Create a new notification
    */
   async create(data) {
@@ -79,6 +145,8 @@ const inspectionNotificationRepository = {
         scheduleId: data.schedule_id,
         propertyId: data.property_id,
         contactId: data.contact_id,
+        userId: data.user_id,
+        recipientType: data.recipient_type,
         recipientEmail: data.recipient_email,
         bookingToken: data.booking_token,
         status: data.status || 'sent',
@@ -87,6 +155,9 @@ const inspectionNotificationRepository = {
       include: {
         property: true,
         contact: true,
+        user: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
   },

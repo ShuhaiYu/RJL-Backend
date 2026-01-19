@@ -7,13 +7,15 @@
 const inspectionNotificationRepository = require('../repositories/inspectionNotificationRepository');
 const inspectionBookingRepository = require('../repositories/inspectionBookingRepository');
 const inspectionSlotRepository = require('../repositories/inspectionSlotRepository');
+const inspectionScheduleRepository = require('../repositories/inspectionScheduleRepository');
 const { generateBookingToken, getTokenExpiryDate, isTokenExpired } = require('../lib/tokenGenerator');
 const { NotFoundError, ValidationError, ConflictError } = require('../lib/errors');
 const { REGION_LABELS } = require('../config/constants');
 
 const publicBookingService = {
   /**
-   * Get booking page data by token
+   * Get booking page data by token (multi-date support)
+   * Returns all future scheduled dates for the property's region
    */
   async getBookingPageData(token) {
     // Find notification by token
@@ -32,51 +34,95 @@ const publicBookingService = {
       };
     }
 
-    // Check schedule is still active
-    if (notification.schedule.status !== 'published' || !notification.schedule.isActive) {
-      throw new ValidationError('This inspection schedule is no longer available');
+    // Get the region from the notification's schedule
+    const region = notification.schedule.region;
+
+    // Fetch ALL future published schedules for this region
+    const futureSchedules = await inspectionScheduleRepository.findFutureByRegion(region);
+
+    // Filter out invalid schedules and format for response
+    const schedulesWithSlots = futureSchedules
+      .filter((schedule) => {
+        // Schedule must be active and published
+        if (schedule.status !== 'published' || !schedule.isActive) return false;
+        // Schedule date must be in the future
+        const scheduleDate = new Date(schedule.scheduleDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return scheduleDate >= today;
+      })
+      .map((schedule) => {
+        // Get available slots
+        const availableSlots = schedule.slots.filter(
+          (slot) => slot.isAvailable && slot.currentBookings < (slot.maxCapacity || 1)
+        );
+
+        return {
+          id: schedule.id,
+          schedule_date: schedule.scheduleDate,
+          slots: availableSlots.map((slot) => ({
+            id: slot.id,
+            start_time: slot.startTime,
+            end_time: slot.endTime,
+            available_spots: slot.maxCapacity - slot.currentBookings,
+          })),
+        };
+      })
+      .filter((schedule) => schedule.slots.length > 0); // Only include schedules with available slots
+
+    if (schedulesWithSlots.length === 0) {
+      throw new ValidationError('No available inspection dates at this time');
     }
 
-    // Check schedule date is in the future
-    const scheduleDate = new Date(notification.schedule.scheduleDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (scheduleDate < today) {
-      throw new ValidationError('This inspection date has passed');
-    }
+    // Determine booker info from notification
+    let bookerInfo = {
+      type: notification.recipientType || 'contact',
+      name: null,
+      email: this.maskEmail(notification.recipientEmail),
+    };
 
-    // Get available slots
-    const availableSlots = notification.schedule.slots.filter(
-      (slot) => slot.isAvailable && slot.currentBookings < (slot.maxCapacity || 1)
-    );
+    if (notification.recipientType === 'contact' && notification.contact) {
+      bookerInfo.name = notification.contact.name;
+      bookerInfo.phone = this.maskPhone(notification.contact.phone);
+    } else if (notification.recipientType === 'agencyUser' && notification.user) {
+      bookerInfo.name = notification.user.name;
+      bookerInfo.role = notification.user.role;
+    }
 
     return {
       already_booked: false,
       property: {
+        id: notification.property.id,
         address: notification.property.address,
       },
+      region: {
+        code: region,
+        label: REGION_LABELS[region],
+      },
+      // Legacy single-schedule support (for backwards compatibility)
       schedule: {
         id: notification.schedule.id,
         region: notification.schedule.region,
         region_label: REGION_LABELS[notification.schedule.region],
         schedule_date: notification.schedule.scheduleDate,
       },
+      // New multi-date support
+      schedules: schedulesWithSlots,
+      // Booker information
+      booker: bookerInfo,
+      // Legacy contact field (for backwards compatibility)
       contact: {
-        name: notification.contact?.name || null,
+        name: notification.contact?.name || notification.user?.name || null,
         phone: this.maskPhone(notification.contact?.phone),
         email: this.maskEmail(notification.recipientEmail),
       },
-      available_slots: availableSlots.map((slot) => ({
-        id: slot.id,
-        start_time: slot.startTime,
-        end_time: slot.endTime,
-        available_spots: slot.maxCapacity - slot.currentBookings,
-      })),
+      // Legacy single-date slots (first schedule's slots for backwards compatibility)
+      available_slots: schedulesWithSlots[0]?.slots || [],
     };
   },
 
   /**
-   * Submit a booking
+   * Submit a booking (records who made the booking)
    */
   async submitBooking(token, data) {
     // Find notification by token
@@ -97,11 +143,18 @@ const publicBookingService = {
       throw new ValidationError('This time slot is no longer available');
     }
 
-    // Create booking
+    // Determine booker information from the notification
+    const bookerType = notification.recipientType || 'contact';
+    const bookedByUserId = notification.recipientType === 'agencyUser' ? notification.userId : null;
+    const contactId = notification.recipientType === 'contact' ? notification.contactId : null;
+
+    // Create booking with booker info
     const booking = await inspectionBookingRepository.create({
       slot_id: data.slot_id,
       property_id: notification.propertyId,
-      contact_id: notification.contactId,
+      contact_id: contactId,
+      booked_by_user_id: bookedByUserId,
+      booker_type: bookerType,
       contact_name: data.contact_name,
       contact_phone: data.contact_phone || null,
       contact_email: data.contact_email || null,

@@ -112,6 +112,32 @@ const inspectionScheduleRepository = {
   },
 
   /**
+   * Find future published schedules by region (for multi-date booking display)
+   */
+  async findFutureByRegion(region) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return prisma.inspectionSchedule.findMany({
+      where: {
+        region,
+        isActive: true,
+        status: 'published',
+        scheduleDate: {
+          gte: today,
+        },
+      },
+      include: {
+        slots: {
+          where: { isAvailable: true },
+          orderBy: { startTime: 'asc' },
+        },
+      },
+      orderBy: { scheduleDate: 'asc' },
+    });
+  },
+
+  /**
    * Create a new schedule with slots
    */
   async create(data, slots) {
