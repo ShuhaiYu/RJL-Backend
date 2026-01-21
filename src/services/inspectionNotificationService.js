@@ -81,6 +81,197 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 const inspectionNotificationService = {
   /**
+   * Send booking invitations to SELECTED recipients only
+   * This is used when creating batch schedules with pre-selected recipients
+   * @param {number} scheduleId - The schedule ID
+   * @param {Array} propertyIds - Array of property IDs
+   * @param {Array} selectedRecipients - Array of selected recipient objects
+   */
+  async sendNotificationsToSelected(scheduleId, propertyIds, selectedRecipients) {
+    const schedule = await inspectionScheduleRepository.findById(scheduleId);
+    if (!schedule) {
+      throw new NotFoundError('Schedule not found');
+    }
+
+    // Get email settings ONCE at the beginning
+    const emailSettings = await systemSettingsRepository.getEmailSettings();
+    if (!emailSettings || !emailSettings.user) {
+      throw new Error('Email settings not configured');
+    }
+
+    // Get cached transporter with connection pooling
+    const transporter = getTransporter(emailSettings);
+
+    const results = {
+      success: [],
+      failed: [],
+      skipped: [],
+    };
+
+    // Create a map of selected recipients by property_id and email for quick lookup
+    const selectedMap = new Map();
+    for (const recipient of selectedRecipients) {
+      const key = `${recipient.property_id}:${recipient.email}`;
+      selectedMap.set(key, recipient);
+    }
+
+    // Phase 1: Collect all email tasks for selected recipients
+    const emailTasks = [];
+
+    for (const propertyId of propertyIds) {
+      try {
+        // Get property with user info
+        const property = await propertyRepository.findByIdWithRelations(propertyId);
+        if (!property) {
+          results.failed.push({
+            property_id: propertyId,
+            error: 'Property not found',
+          });
+          continue;
+        }
+
+        // Get property tasks to include inspection types in email
+        const propertyTasks = await prisma.task.findMany({
+          where: {
+            propertyId,
+            isActive: true,
+            status: { in: ['incomplete', 'unknown'] },
+          },
+          select: { type: true },
+        });
+        const inspectionTypes = [...new Set(propertyTasks.map((t) => t.type).filter(Boolean))];
+
+        // Get selected recipients for this property
+        const propertyRecipients = selectedRecipients.filter((r) => r.property_id === propertyId);
+
+        for (const recipient of propertyRecipients) {
+          // Check if this email already received notification for this schedule
+          const alreadySent = await inspectionNotificationRepository.existsForEmailAndSchedule(
+            recipient.email,
+            scheduleId
+          );
+          if (alreadySent) {
+            results.skipped.push({
+              property_id: propertyId,
+              recipient_email: recipient.email,
+              recipient_name: recipient.name,
+              recipient_type: recipient.type,
+              reason: 'Already notified for this schedule',
+            });
+            continue;
+          }
+
+          // Generate independent token for this recipient
+          const token = generateBookingToken();
+
+          // Queue email task for parallel sending
+          emailTasks.push({
+            recipient: {
+              name: recipient.name,
+              email: recipient.email,
+              type: recipient.type,
+              contactId: recipient.contact_id || null,
+              userId: recipient.user_id || null,
+            },
+            property,
+            schedule,
+            token,
+            inspectionTypes,
+            propertyId,
+            scheduleId,
+          });
+        }
+      } catch (error) {
+        logger.error('Failed to process property for selected notifications', {
+          propertyId,
+          error: error.message,
+        });
+        results.failed.push({
+          property_id: propertyId,
+          error: error.message,
+        });
+      }
+    }
+
+    // Phase 2: Send all emails in parallel batches
+    if (emailTasks.length > 0) {
+      logger.info('Starting parallel email sending for selected recipients', {
+        scheduleId,
+        totalEmails: emailTasks.length,
+      });
+
+      const sendResults = await sendInBatches(
+        emailTasks.map((task) => async () => {
+          try {
+            const sent = await this.sendBookingInvitation(
+              task.recipient,
+              task.property,
+              task.schedule,
+              task.token,
+              task.inspectionTypes,
+              transporter,
+              emailSettings
+            );
+
+            if (sent) {
+              // Save notification record
+              await inspectionNotificationRepository.create({
+                schedule_id: task.scheduleId,
+                property_id: task.propertyId,
+                contact_id: task.recipient.contactId,
+                user_id: task.recipient.userId,
+                recipient_type: task.recipient.type,
+                recipient_email: task.recipient.email,
+                booking_token: task.token,
+                status: 'sent',
+              });
+
+              return { success: true, task };
+            } else {
+              return { success: false, task, error: 'Failed to send email' };
+            }
+          } catch (error) {
+            return { success: false, task, error: error.message };
+          }
+        }),
+        5 // Concurrency limit
+      );
+
+      // Process results
+      for (const result of sendResults) {
+        if (result.status === 'fulfilled') {
+          const { success, task, error } = result.value;
+          if (success) {
+            results.success.push({
+              property_id: task.propertyId,
+              recipient_email: task.recipient.email,
+              recipient_name: task.recipient.name,
+              recipient_type: task.recipient.type,
+            });
+          } else {
+            results.failed.push({
+              property_id: task.propertyId,
+              recipient_email: task.recipient.email,
+              error: error,
+            });
+          }
+        } else {
+          logger.error('Email task promise rejected', { reason: result.reason });
+        }
+      }
+
+      logger.info('Parallel email sending for selected recipients completed', {
+        scheduleId,
+        success: results.success.length,
+        failed: results.failed.length,
+        skipped: results.skipped.length,
+      });
+    }
+
+    return results;
+  },
+
+  /**
    * Send booking invitations to multiple properties (multi-recipient)
    * For each property, sends to ALL contacts with email AND ALL agency users
    * Optimized for parallel sending with connection pooling

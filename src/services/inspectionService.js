@@ -10,6 +10,8 @@ const inspectionSlotRepository = require('../repositories/inspectionSlotReposito
 const propertyRepository = require('../repositories/propertyRepository');
 const contactRepository = require('../repositories/contactRepository');
 const userRepository = require('../repositories/userRepository');
+const inspectionNotificationService = require('./inspectionNotificationService');
+const logger = require('../lib/logger');
 const { NotFoundError, ValidationError, ConflictError, ForbiddenError } = require('../lib/errors');
 const { REGION, REGION_LABELS, SCHEDULE_STATUS, USER_ROLES } = require('../config/constants');
 
@@ -212,8 +214,11 @@ const inspectionService = {
   /**
    * Create multiple schedules for multiple dates (batch creation)
    * Only superuser/admin can create schedules
+   * @param {Object} data - Schedule data (region, dates, etc.)
+   * @param {Object} requestingUser - The user making the request
+   * @param {Array} selectedRecipients - Optional array of recipients to send notifications to
    */
-  async createMultipleSchedules(data, requestingUser) {
+  async createMultipleSchedules(data, requestingUser, selectedRecipients = null) {
     // Permission check - only superuser/admin can create
     this.requireManagePermission(requestingUser, 'create');
 
@@ -221,6 +226,7 @@ const inspectionService = {
       created: [],
       skipped: [],
       failed: [],
+      notifications: null, // Will contain notification results if selectedRecipients provided
     };
 
     // Validate region
@@ -314,6 +320,60 @@ const inspectionService = {
           date: scheduleDate,
           error: error.message,
         });
+      }
+    }
+
+    // If selectedRecipients is provided and schedules were created, send notifications
+    if (selectedRecipients && selectedRecipients.length > 0 && results.created.length > 0) {
+      try {
+        // Group recipients by property_id
+        const recipientsByProperty = new Map();
+        for (const recipient of selectedRecipients) {
+          if (!recipientsByProperty.has(recipient.property_id)) {
+            recipientsByProperty.set(recipient.property_id, []);
+          }
+          recipientsByProperty.get(recipient.property_id).push(recipient);
+        }
+
+        // Get unique property IDs
+        const propertyIds = [...recipientsByProperty.keys()];
+
+        // Use the first created schedule for notifications
+        // (All schedules are for the same region, so any one will work)
+        const scheduleId = results.created[0].id;
+
+        logger.info('Sending notifications for batch schedule creation', {
+          scheduleId,
+          propertyCount: propertyIds.length,
+          totalRecipients: selectedRecipients.length,
+        });
+
+        // Send notifications to selected recipients
+        const notificationResults = await inspectionNotificationService.sendNotificationsToSelected(
+          scheduleId,
+          propertyIds,
+          selectedRecipients
+        );
+
+        results.notifications = notificationResults;
+
+        logger.info('Batch notification sending completed', {
+          scheduleId,
+          success: notificationResults.success?.length || 0,
+          failed: notificationResults.failed?.length || 0,
+          skipped: notificationResults.skipped?.length || 0,
+        });
+      } catch (error) {
+        logger.error('Failed to send notifications for batch schedule creation', {
+          error: error.message,
+          stack: error.stack,
+        });
+        results.notifications = {
+          error: error.message,
+          success: [],
+          failed: [],
+          skipped: [],
+        };
       }
     }
 

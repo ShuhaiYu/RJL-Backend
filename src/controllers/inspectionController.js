@@ -110,11 +110,17 @@ const inspectionController = {
   /**
    * POST /api/inspection/schedules/batch
    * Create multiple schedules for multiple dates
+   * Optionally sends notifications to selected recipients immediately
    */
   async createBatchSchedule(req, res, next) {
     try {
       const data = createBatchScheduleSchema.parse(req.body);
-      const result = await inspectionService.createMultipleSchedules(data, req.user);
+      const { selected_recipients, ...scheduleData } = data;
+      const result = await inspectionService.createMultipleSchedules(
+        scheduleData,
+        req.user,
+        selected_recipients
+      );
       sendSuccess(res, {
         message: `Schedules created: ${result.created.length} success, ${result.skipped.length} skipped, ${result.failed.length} failed`,
         data: result,

@@ -65,6 +65,15 @@ const createBatchScheduleSchema = z.object({
   slot_duration: z.number().int().min(15).max(480).optional(),
   max_capacity: z.number().int().min(1).max(20).optional(),
   note: z.string().max(500).optional(),
+  // Selected recipients for immediate email notification after schedule creation
+  selected_recipients: z.array(z.object({
+    property_id: z.number().int().positive(),
+    contact_id: z.number().int().positive().optional().nullable(),
+    user_id: z.number().int().positive().optional().nullable(),
+    type: z.enum(['contact', 'agencyUser']),
+    email: z.string().email(),
+    name: z.string().optional(),
+  })).optional(),
 });
 
 // Update schedule schema
