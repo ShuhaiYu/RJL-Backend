@@ -8,16 +8,65 @@ const prisma = require('../config/prisma');
 const inspectionBookingRepository = require('../repositories/inspectionBookingRepository');
 const inspectionSlotRepository = require('../repositories/inspectionSlotRepository');
 const inspectionNotificationService = require('./inspectionNotificationService');
-const { NotFoundError, ValidationError, ConflictError } = require('../lib/errors');
+const { NotFoundError, ValidationError, ConflictError, ForbiddenError } = require('../lib/errors');
 const { REGION_LABELS, BOOKING_STATUS } = require('../config/constants');
 const logger = require('../lib/logger');
 
 const inspectionBookingService = {
+  // ==================== Permission & Scope Methods ====================
+
+  /**
+   * Build inspection scope based on user role
+   * Superuser/Admin: No restrictions
+   * Agency Admin/User: Filter by agency_id
+   */
+  buildInspectionScope(requestingUser) {
+    if (['superuser', 'admin'].includes(requestingUser.role)) {
+      return {}; // No restrictions
+    }
+    // Agency admin and agency user - filter by agency
+    return { agencyId: requestingUser.agency_id };
+  },
+
+  /**
+   * Check if user can manage (confirm/reject/reschedule) bookings
+   * Only superuser and admin can manage bookings
+   */
+  canManageBooking(requestingUser) {
+    return ['superuser', 'admin'].includes(requestingUser.role);
+  },
+
+  /**
+   * Validate manage permission and throw if not allowed
+   */
+  requireManagePermission(requestingUser, action = 'manage') {
+    if (!this.canManageBooking(requestingUser)) {
+      throw new ForbiddenError(`No permission to ${action} inspection bookings`);
+    }
+  },
+
+  /**
+   * Check if user can access a specific booking
+   * Admin/superuser can access all, agency users can only access bookings for their agency's properties
+   */
+  canAccessBooking(requestingUser, booking) {
+    if (['superuser', 'admin'].includes(requestingUser.role)) {
+      return true;
+    }
+    // For agency users, check if the property belongs to their agency
+    const propertyAgencyId = booking.property?.user?.agencyId || booking.property?.user?.agency?.id;
+    return propertyAgencyId === requestingUser.agency_id;
+  },
+
+  // ==================== Booking Methods ====================
+
   /**
    * List all bookings with filters
+   * For agency users, only returns bookings for their agency's properties
    */
-  async listBookings(filters) {
-    const result = await inspectionBookingRepository.findAll(filters);
+  async listBookings(filters, requestingUser) {
+    const scope = this.buildInspectionScope(requestingUser);
+    const result = await inspectionBookingRepository.findAll(filters, scope);
     return {
       data: result.bookings.map((booking) => this.formatBooking(booking)),
       pagination: result.pagination,
@@ -26,9 +75,11 @@ const inspectionBookingService = {
 
   /**
    * Get booking by ID
+   * For agency users, validates they have access to the booking
    */
-  async getBookingById(id) {
-    const booking = await inspectionBookingRepository.findById(id);
+  async getBookingById(id, requestingUser) {
+    const scope = this.buildInspectionScope(requestingUser);
+    const booking = await inspectionBookingRepository.findById(id, scope);
     if (!booking) {
       throw new NotFoundError('Booking not found');
     }
@@ -37,8 +88,12 @@ const inspectionBookingService = {
 
   /**
    * Confirm a booking (auto-rejects other pending bookings for the same property)
+   * Only superuser/admin can confirm bookings
    */
-  async confirmBooking(id, data, userId) {
+  async confirmBooking(id, data, requestingUser) {
+    // Permission check - only superuser/admin can confirm
+    this.requireManagePermission(requestingUser, 'confirm');
+
     const booking = await inspectionBookingRepository.findById(id);
     if (!booking) {
       throw new NotFoundError('Booking not found');
@@ -51,7 +106,7 @@ const inspectionBookingService = {
     // Use transaction to ensure atomicity
     const result = await prisma.$transaction(async (tx) => {
       // 1. Confirm the selected booking
-      const confirmed = await inspectionBookingRepository.updateStatusWithTx(tx, id, 'confirmed', userId);
+      const confirmed = await inspectionBookingRepository.updateStatusWithTx(tx, id, 'confirmed', requestingUser.user_id);
 
       // 2. Find other pending bookings for the same property
       const otherPending = await tx.inspectionBooking.findMany({
@@ -88,7 +143,7 @@ const inspectionBookingService = {
         });
       }
 
-      // 4. Update all INCOMPLETE tasks for this property to PROCESSING with inspection date
+      // 4. Update all incomplete tasks for this property to processing with inspection date
       // Construct inspection datetime from schedule date + slot start time
       const scheduleDate = booking.slot.schedule.scheduleDate;
       const dateStr = scheduleDate instanceof Date
@@ -100,17 +155,17 @@ const inspectionBookingService = {
       const taskUpdateResult = await tx.task.updateMany({
         where: {
           propertyId: booking.propertyId,
-          status: 'INCOMPLETE',
+          status: 'incomplete',
           isActive: true,
         },
         data: {
-          status: 'PROCESSING',
+          status: 'processing',
           inspectionDate: inspectionDateTime,
           updatedAt: new Date(),
         },
       });
 
-      logger.info('Updated tasks to PROCESSING after booking confirmation', {
+      logger.info('Updated tasks to processing after booking confirmation', {
         bookingId: id,
         propertyId: booking.propertyId,
         tasksUpdated: taskUpdateResult.count,
@@ -143,8 +198,12 @@ const inspectionBookingService = {
 
   /**
    * Reject a booking
+   * Only superuser/admin can reject bookings
    */
-  async rejectBooking(id, data, userId) {
+  async rejectBooking(id, data, requestingUser) {
+    // Permission check - only superuser/admin can reject
+    this.requireManagePermission(requestingUser, 'reject');
+
     const booking = await inspectionBookingRepository.findById(id);
     if (!booking) {
       throw new NotFoundError('Booking not found');
@@ -157,7 +216,7 @@ const inspectionBookingService = {
     // Decrement slot booking count
     await inspectionSlotRepository.decrementBookings(booking.slotId);
 
-    const updated = await inspectionBookingRepository.updateStatus(id, 'rejected', userId);
+    const updated = await inspectionBookingRepository.updateStatus(id, 'rejected', requestingUser.user_id);
 
     // Send rejection email if requested
     if (data.send_notification) {
@@ -174,8 +233,12 @@ const inspectionBookingService = {
 
   /**
    * Reschedule a booking to a different slot
+   * Only superuser/admin can reschedule bookings
    */
-  async rescheduleBooking(id, data, userId) {
+  async rescheduleBooking(id, data, requestingUser) {
+    // Permission check - only superuser/admin can reschedule
+    this.requireManagePermission(requestingUser, 'reschedule');
+
     const booking = await inspectionBookingRepository.findById(id);
     if (!booking) {
       throw new NotFoundError('Booking not found');

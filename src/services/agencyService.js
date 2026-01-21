@@ -81,6 +81,12 @@ const agencyService = {
    * Create a new agency with admin user
    */
   async createAgency(data) {
+    // Check if admin email already exists BEFORE creating agency
+    const existingUser = await userRepository.findByEmail(data.admin_email);
+    if (existingUser) {
+      throw new ConflictError('Admin email is already registered');
+    }
+
     // Create agency
     const agency = await agencyRepository.create({
       agency_name: data.agency_name,
@@ -139,6 +145,7 @@ const agencyService = {
 
   /**
    * Delete an agency (soft delete)
+   * Also deactivates all users belonging to this agency
    */
   async deleteAgency(id, requestingUser) {
     const agency = await agencyRepository.findById(id);
@@ -150,6 +157,9 @@ const agencyService = {
     if (requestingUser.role !== 'superuser') {
       throw new ForbiddenError('Only superuser can delete agencies');
     }
+
+    // Deactivate all users in this agency and clear their tokens
+    await userRepository.deactivateByAgencyId(id);
 
     return agencyRepository.softDelete(id);
   },

@@ -36,14 +36,19 @@ const taskService = {
     const skip = (page - 1) * limit;
     const scope = await this.buildTaskScope(requestingUser);
 
+    // Convert status and type from URL format to database format
+    // URL format: DUE_SOON, SMOKE_ALARM -> Database format: due soon, smoke alarm
+    const normalizedStatus = status ? status.toLowerCase().replace(/_/g, ' ') : undefined;
+    const normalizedType = type ? type.toLowerCase().replace(/_/g, ' ') : undefined;
+
     const filters = {
       ...scope,
       skip,
       take: limit,
       search,
       propertyId: property_id,
-      status,
-      type,
+      status: normalizedStatus,
+      type: normalizedType,
     };
 
     const { tasks, total } = await taskRepository.findAll(filters);

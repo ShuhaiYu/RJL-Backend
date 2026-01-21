@@ -83,7 +83,7 @@ const inspectionController = {
   async listSchedules(req, res, next) {
     try {
       const filters = listSchedulesQuerySchema.parse(req.query);
-      const result = await inspectionService.listSchedules(filters);
+      const result = await inspectionService.listSchedules(filters, req.user);
       sendSuccess(res, result);
     } catch (error) {
       next(error);
@@ -97,7 +97,7 @@ const inspectionController = {
   async createSchedule(req, res, next) {
     try {
       const data = createScheduleSchema.parse(req.body);
-      const schedule = await inspectionService.createSchedule(data, req.user.user_id);
+      const schedule = await inspectionService.createSchedule(data, req.user);
       sendSuccess(res, {
         message: 'Schedule created successfully',
         data: schedule,
@@ -114,7 +114,7 @@ const inspectionController = {
   async createBatchSchedule(req, res, next) {
     try {
       const data = createBatchScheduleSchema.parse(req.body);
-      const result = await inspectionService.createMultipleSchedules(data, req.user.user_id);
+      const result = await inspectionService.createMultipleSchedules(data, req.user);
       sendSuccess(res, {
         message: `Schedules created: ${result.created.length} success, ${result.skipped.length} skipped, ${result.failed.length} failed`,
         data: result,
@@ -131,7 +131,7 @@ const inspectionController = {
   async previewRecipientsByRegion(req, res, next) {
     try {
       const { region } = regionParamSchema.parse(req.params);
-      const preview = await inspectionService.previewRecipientsByRegion(region);
+      const preview = await inspectionService.previewRecipientsByRegion(region, req.user);
       sendSuccess(res, { data: preview });
     } catch (error) {
       next(error);
@@ -145,7 +145,7 @@ const inspectionController = {
   async getScheduleDetail(req, res, next) {
     try {
       const { id } = scheduleIdParamSchema.parse(req.params);
-      const schedule = await inspectionService.getScheduleById(id);
+      const schedule = await inspectionService.getScheduleById(id, req.user);
       sendSuccess(res, { data: schedule });
     } catch (error) {
       next(error);
@@ -160,7 +160,7 @@ const inspectionController = {
     try {
       const { id } = scheduleIdParamSchema.parse(req.params);
       const data = updateScheduleSchema.parse(req.body);
-      const schedule = await inspectionService.updateSchedule(id, data);
+      const schedule = await inspectionService.updateSchedule(id, data, req.user);
       sendSuccess(res, {
         message: 'Schedule updated successfully',
         data: schedule,
@@ -177,7 +177,7 @@ const inspectionController = {
   async deleteSchedule(req, res, next) {
     try {
       const { id } = scheduleIdParamSchema.parse(req.params);
-      const result = await inspectionService.deleteSchedule(id);
+      const result = await inspectionService.deleteSchedule(id, req.user);
       sendSuccess(res, result);
     } catch (error) {
       next(error);
@@ -191,7 +191,7 @@ const inspectionController = {
   async getScheduleProperties(req, res, next) {
     try {
       const { id } = scheduleIdParamSchema.parse(req.params);
-      const properties = await inspectionService.getScheduleProperties(id);
+      const properties = await inspectionService.getScheduleProperties(id, req.user);
       sendSuccess(res, { data: properties });
     } catch (error) {
       next(error);
@@ -249,7 +249,7 @@ const inspectionController = {
   async listBookings(req, res, next) {
     try {
       const filters = listBookingsQuerySchema.parse(req.query);
-      const result = await inspectionBookingService.listBookings(filters);
+      const result = await inspectionBookingService.listBookings(filters, req.user);
       sendSuccess(res, result);
     } catch (error) {
       next(error);
@@ -263,7 +263,7 @@ const inspectionController = {
   async getBookingDetail(req, res, next) {
     try {
       const { id } = bookingIdParamSchema.parse(req.params);
-      const booking = await inspectionBookingService.getBookingById(id);
+      const booking = await inspectionBookingService.getBookingById(id, req.user);
       sendSuccess(res, { data: booking });
     } catch (error) {
       next(error);
@@ -278,7 +278,7 @@ const inspectionController = {
     try {
       const { id } = bookingIdParamSchema.parse(req.params);
       const data = confirmBookingSchema.parse(req.body);
-      const booking = await inspectionBookingService.confirmBooking(id, data, req.user.id);
+      const booking = await inspectionBookingService.confirmBooking(id, data, req.user);
       sendSuccess(res, {
         message: 'Booking confirmed successfully',
         data: booking,
@@ -296,7 +296,7 @@ const inspectionController = {
     try {
       const { id } = bookingIdParamSchema.parse(req.params);
       const data = rejectBookingSchema.parse(req.body);
-      const booking = await inspectionBookingService.rejectBooking(id, data, req.user.id);
+      const booking = await inspectionBookingService.rejectBooking(id, data, req.user);
       sendSuccess(res, {
         message: 'Booking rejected',
         data: booking,
@@ -314,7 +314,7 @@ const inspectionController = {
     try {
       const { id } = bookingIdParamSchema.parse(req.params);
       const data = rescheduleBookingSchema.parse(req.body);
-      const booking = await inspectionBookingService.rescheduleBooking(id, data, req.user.id);
+      const booking = await inspectionBookingService.rescheduleBooking(id, data, req.user);
       sendSuccess(res, {
         message: 'Booking rescheduled successfully',
         data: booking,

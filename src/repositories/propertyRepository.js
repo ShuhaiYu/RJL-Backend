@@ -179,21 +179,32 @@ const propertyRepository = {
   },
 
   /**
-   * Find properties in a region that have at least one INCOMPLETE task
+   * Find properties in a region that have at least one incomplete task
    * Used for inspection scheduling - only properties needing inspection
+   * @param {string} region - The region to filter by
+   * @param {number|undefined} agencyId - Optional agency ID to filter by (for agency users)
    */
-  async findByRegionWithIncompleteTasks(region) {
-    return prisma.property.findMany({
-      where: {
-        region: region,
-        isActive: true,
-        tasks: {
-          some: {
-            status: 'INCOMPLETE',
-            isActive: true,
-          },
+  async findByRegionWithIncompleteTasks(region, agencyId = undefined) {
+    const where = {
+      region: region,
+      isActive: true,
+      tasks: {
+        some: {
+          status: 'incomplete',
+          isActive: true,
         },
       },
+    };
+
+    // For agency users, only show their agency's properties
+    if (agencyId) {
+      where.user = {
+        agencyId: agencyId,
+      };
+    }
+
+    return prisma.property.findMany({
+      where,
       include: {
         user: {
           include: {

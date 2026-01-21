@@ -104,4 +104,22 @@ module.exports = {
       next(error);
     }
   },
+
+  /**
+   * Batch update region for multiple properties
+   * PUT /api/properties/batch-update-region
+   */
+  batchUpdateRegion: async (req, res, next) => {
+    try {
+      const { property_ids, region } = req.body;
+      const result = await propertyService.batchUpdateRegion(property_ids, region, req.user);
+
+      sendSuccess(res, {
+        message: 'Properties updated successfully',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };

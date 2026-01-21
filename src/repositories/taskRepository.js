@@ -141,12 +141,12 @@ const taskRepository = {
     if (!agencyId && (!userIds || userIds.length === 0)) {
       const result = await prisma.$queryRaw`
         SELECT
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'UNKNOWN')::int AS unknown_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'INCOMPLETE')::int AS incomplete_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'PROCESSING')::int AS processing_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'COMPLETED')::int AS completed_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'DUE SOON')::int AS due_soon_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'EXPIRED')::int AS expired_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'unknown')::int AS unknown_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'incomplete')::int AS incomplete_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'processing')::int AS processing_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'completed')::int AS completed_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'due soon')::int AS due_soon_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'expired')::int AS expired_count,
           (SELECT COUNT(*) FROM "AGENCY" WHERE is_active = true)::int AS agency_count,
           (SELECT COUNT(*) FROM "PROPERTY" WHERE is_active = true)::int AS property_count
       `;
@@ -158,11 +158,11 @@ const taskRepository = {
       const result = await prisma.$queryRaw`
         SELECT
           0::int AS unknown_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'INCOMPLETE' AND agency_id = ${agencyId})::int AS incomplete_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'PROCESSING' AND agency_id = ${agencyId})::int AS processing_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'COMPLETED' AND agency_id = ${agencyId})::int AS completed_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'DUE SOON' AND agency_id = ${agencyId})::int AS due_soon_count,
-          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'EXPIRED' AND agency_id = ${agencyId})::int AS expired_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'incomplete' AND agency_id = ${agencyId})::int AS incomplete_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'processing' AND agency_id = ${agencyId})::int AS processing_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'completed' AND agency_id = ${agencyId})::int AS completed_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'due soon' AND agency_id = ${agencyId})::int AS due_soon_count,
+          (SELECT COUNT(*) FROM "TASK" WHERE is_active = true AND status = 'expired' AND agency_id = ${agencyId})::int AS expired_count,
           (SELECT COUNT(*) FROM "PROPERTY" p JOIN "USER" u ON p.user_id = u.id WHERE p.is_active = true AND u.agency_id = ${agencyId})::int AS property_count
         `;
       return { ...result[0], agency_count: undefined };
@@ -262,35 +262,35 @@ const taskRepository = {
 
   /**
    * Update task statuses for expiring tasks
-   * 1. COMPLETED + due_date within 60 days -> DUE SOON
-   * 2. DUE SOON + past due_date -> EXPIRED
+   * 1. completed + due_date within 60 days -> due soon
+   * 2. due soon + past due_date -> expired
    */
   async updateExpiredStatuses() {
     const now = new Date();
     const sixtyDaysFromNow = new Date();
     sixtyDaysFromNow.setDate(sixtyDaysFromNow.getDate() + 60);
 
-    // Update COMPLETED -> DUE SOON (due within 60 days, not yet expired)
+    // Update completed -> due soon (due within 60 days, not yet expired)
     const dueSoonResult = await prisma.task.updateMany({
       where: {
-        status: 'COMPLETED',
+        status: 'completed',
         isActive: true,
         dueDate: {
           lte: sixtyDaysFromNow,
           gte: now,
         },
       },
-      data: { status: 'DUE SOON' },
+      data: { status: 'due soon' },
     });
 
-    // Update DUE SOON -> EXPIRED (past due date)
+    // Update due soon -> expired (past due date)
     const expiredResult = await prisma.task.updateMany({
       where: {
-        status: 'DUE SOON',
+        status: 'due soon',
         isActive: true,
         dueDate: { lt: now },
       },
-      data: { status: 'EXPIRED' },
+      data: { status: 'expired' },
     });
 
     return {
@@ -301,7 +301,7 @@ const taskRepository = {
 
   /**
    * Find tasks due today or 60 days ago for reminders
-   * Logic: tasks with status INCOMPLETE and due_date is today or 60 days ago
+   * Logic: tasks with status incomplete and due_date is today or 60 days ago
    */
   async findTasksForReminder() {
     const today = new Date();
@@ -317,7 +317,7 @@ const taskRepository = {
     return prisma.task.findMany({
       where: {
         isActive: true,
-        status: 'INCOMPLETE',
+        status: 'incomplete',
         OR: [
           {
             dueDate: {

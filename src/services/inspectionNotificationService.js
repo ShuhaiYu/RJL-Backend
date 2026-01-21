@@ -162,7 +162,7 @@ const inspectionNotificationService = {
           where: {
             propertyId,
             isActive: true,
-            status: { in: ['INCOMPLETE', 'UNKNOWN'] },
+            status: { in: ['incomplete', 'unknown'] },
           },
           select: { type: true },
         });

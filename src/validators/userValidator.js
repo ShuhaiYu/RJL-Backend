@@ -4,6 +4,7 @@
 
 const { z } = require('zod');
 const { USER_ROLES } = require('../config/constants');
+const { passwordSchema } = require('./authValidator');
 
 // Valid roles array
 const validRoles = Object.values(USER_ROLES);
@@ -12,7 +13,7 @@ const validRoles = Object.values(USER_ROLES);
 const createUserSchema = z.object({
   email: z.string().email('Invalid email format'),
   name: z.string().min(1, 'Name is required').max(255, 'Name too long'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: passwordSchema,
   role: z.enum(validRoles, { errorMap: () => ({ message: 'Invalid role' }) }),
   agency_id: z.number().int().positive().optional().nullable(),
   permissions: z.array(z.object({
@@ -25,7 +26,7 @@ const createUserSchema = z.object({
 const updateUserSchema = z.object({
   email: z.string().email('Invalid email format').optional(),
   name: z.string().min(1).max(255).optional(),
-  password: z.string().min(8, 'Password must be at least 8 characters').optional(),
+  password: passwordSchema.optional(),
   role: z.enum(validRoles).optional(),
   agency_id: z.number().int().positive().optional().nullable(),
   is_active: z.boolean().optional(),
@@ -50,7 +51,7 @@ const listUsersQuerySchema = z.object({
 // Change password schema
 const changePasswordSchema = z.object({
   oldPassword: z.string().min(1, 'Old password is required'),
-  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+  newPassword: passwordSchema,
 });
 
 module.exports = {

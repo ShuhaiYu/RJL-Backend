@@ -39,9 +39,16 @@ const listPropertiesQuerySchema = z.object({
   region: z.enum(regionValues).optional(),
 });
 
+// Batch update region schema
+const batchUpdateRegionSchema = z.object({
+  property_ids: z.array(z.number().int().positive('Invalid property ID')).min(1, 'At least one property ID is required'),
+  region: z.enum(regionValues, { errorMap: () => ({ message: 'Invalid region. Must be one of: EAST, SOUTH, WEST, NORTH, CENTRAL' }) }),
+});
+
 module.exports = {
   createPropertySchema,
   updatePropertySchema,
   propertyIdParamSchema,
   listPropertiesQuerySchema,
+  batchUpdateRegionSchema,
 };

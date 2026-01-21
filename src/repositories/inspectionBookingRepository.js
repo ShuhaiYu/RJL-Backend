@@ -9,9 +9,12 @@ const prisma = require('../config/prisma');
 const inspectionBookingRepository = {
   /**
    * Find booking by ID
+   * For agency users, validates they have access (via property ownership)
+   * @param {number} id - Booking ID
+   * @param {Object} scope - Access scope (agencyId for agency users)
    */
-  async findById(id) {
-    return prisma.inspectionBooking.findUnique({
+  async findById(id, scope = {}) {
+    const booking = await prisma.inspectionBooking.findUnique({
       where: { id },
       include: {
         slot: {
@@ -19,7 +22,13 @@ const inspectionBookingRepository = {
             schedule: true,
           },
         },
-        property: true,
+        property: {
+          include: {
+            user: {
+              select: { id: true, agencyId: true },
+            },
+          },
+        },
         contact: true,
         confirmer: {
           select: { id: true, name: true },
@@ -29,6 +38,16 @@ const inspectionBookingRepository = {
         },
       },
     });
+
+    // For agency users, verify they have access to this booking
+    if (booking && scope.agencyId) {
+      const propertyAgencyId = booking.property?.user?.agencyId;
+      if (propertyAgencyId !== scope.agencyId) {
+        return null; // No access to this booking
+      }
+    }
+
+    return booking;
   },
 
   /**
@@ -74,8 +93,11 @@ const inspectionBookingRepository = {
 
   /**
    * Find bookings with filters
+   * For agency users, only return bookings for their agency's properties
+   * @param {Object} filters - Query filters
+   * @param {Object} scope - Access scope (agencyId for agency users)
    */
-  async findAll(filters = {}) {
+  async findAll(filters = {}, scope = {}) {
     const where = {};
 
     if (filters.schedule_id) {
@@ -88,6 +110,13 @@ const inspectionBookingRepository = {
 
     if (filters.status) {
       where.status = filters.status;
+    }
+
+    // For agency users, only show bookings for their agency's properties
+    if (scope.agencyId) {
+      where.property = {
+        user: { agencyId: scope.agencyId },
+      };
     }
 
     const page = filters.page || 1;

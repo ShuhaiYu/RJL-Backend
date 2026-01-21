@@ -122,6 +122,28 @@ const propertyService = {
       throw new ForbiddenError('Cannot modify this property');
     }
 
+    // If changing user_id, validate the target user
+    if (data.user_id !== undefined && data.user_id !== property.userId) {
+      // Only admin roles can change property ownership
+      if (!['superuser', 'admin', 'agency-admin'].includes(requestingUser.role)) {
+        throw new ForbiddenError('Cannot change property owner');
+      }
+
+      if (data.user_id !== null) {
+        const targetUser = await userRepository.findById(data.user_id);
+        if (!targetUser) {
+          throw new NotFoundError('Target user');
+        }
+
+        // Agency admin can only assign to users in their agency
+        if (requestingUser.role === USER_ROLES.AGENCY_ADMIN) {
+          if (targetUser.agencyId !== requestingUser.agency_id) {
+            throw new ForbiddenError('Cannot assign property to user in another agency');
+          }
+        }
+      }
+    }
+
     // If changing address, check for conflicts
     if (data.address && data.address !== property.address) {
       const userId = data.user_id || property.userId;

@@ -64,14 +64,42 @@ const agencyRepository = {
 
   /**
    * List agencies with task statistics
-   * Uses raw query for complex aggregation
+   * Uses raw query for complex aggregation with parameterized search
    */
   async listAgenciesWithStats(search) {
-    const searchCondition = search
-      ? `AND a.agency_name ILIKE '%${search}%'`
-      : '';
+    // Use parameterized query to prevent SQL injection
+    if (search) {
+      const stats = await prisma.$queryRaw`
+        SELECT
+          a.id as agency_id,
+          a.agency_name,
+          a.address,
+          a.phone,
+          a.logo,
+          a.is_active,
+          a.veu_activated,
+          a.created_at,
+          a.updated_at,
+          COUNT(DISTINCT u.id) as total_users,
+          COUNT(DISTINCT CASE WHEN t.status = 'unknown' AND t.is_active = true THEN p.id END) as unknown_count,
+          COUNT(CASE WHEN t.status = 'incomplete' AND t.is_active = true THEN 1 END) as incomplete_count,
+          COUNT(CASE WHEN t.status = 'processing' AND t.is_active = true THEN 1 END) as processing_count,
+          COUNT(CASE WHEN t.status = 'due soon' AND t.is_active = true THEN 1 END) as due_soon_count,
+          COUNT(CASE WHEN t.status = 'expired' AND t.is_active = true THEN 1 END) as expired_count,
+          COUNT(CASE WHEN t.status = 'completed' AND t.is_active = true THEN 1 END) as completed_count
+        FROM "AGENCY" a
+        LEFT JOIN "USER" u ON u.agency_id = a.id AND u.is_active = true
+        LEFT JOIN "PROPERTY" p ON p.user_id = u.id AND p.is_active = true
+        LEFT JOIN "TASK" t ON t.property_id = p.id
+        WHERE a.is_active = true AND a.agency_name ILIKE ${'%' + search + '%'}
+        GROUP BY a.id
+        ORDER BY a.id ASC
+      `;
+      return stats;
+    }
 
-    const stats = await prisma.$queryRawUnsafe(`
+    // No search - no need for ILIKE condition
+    const stats = await prisma.$queryRaw`
       SELECT
         a.id as agency_id,
         a.agency_name,
@@ -93,10 +121,10 @@ const agencyRepository = {
       LEFT JOIN "USER" u ON u.agency_id = a.id AND u.is_active = true
       LEFT JOIN "PROPERTY" p ON p.user_id = u.id AND p.is_active = true
       LEFT JOIN "TASK" t ON t.property_id = p.id
-      WHERE a.is_active = true ${searchCondition}
+      WHERE a.is_active = true
       GROUP BY a.id
       ORDER BY a.id ASC
-    `);
+    `;
 
     return stats;
   },

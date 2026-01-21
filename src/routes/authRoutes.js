@@ -7,6 +7,7 @@ const router = express.Router();
 
 const authController = require('../controllers/authController');
 const authMiddleware = require('../middlewares/authMiddleware');
+const { authLimiter, passwordResetLimiter } = require('../middlewares/rateLimiter');
 const { validate } = require('../validators');
 const {
   loginSchema,
@@ -16,11 +17,11 @@ const {
   changePasswordSchema,
 } = require('../validators/authValidator');
 
-// Public routes
-router.post('/login', validate(loginSchema), authController.login);
+// Public routes (with rate limiting)
+router.post('/login', authLimiter, validate(loginSchema), authController.login);
 router.post('/refresh-token', validate(refreshTokenSchema), authController.refreshToken);
-router.post('/forgot-password', validate(forgotPasswordSchema), authController.forgotPassword);
-router.post('/reset-password', validate(resetPasswordSchema), authController.resetPassword);
+router.post('/forgot-password', passwordResetLimiter, validate(forgotPasswordSchema), authController.forgotPassword);
+router.post('/reset-password', passwordResetLimiter, validate(resetPasswordSchema), authController.resetPassword);
 
 // Protected routes (require authentication)
 router.post('/change-password',

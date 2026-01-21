@@ -9,8 +9,11 @@ const prisma = require('../config/prisma');
 const inspectionScheduleRepository = {
   /**
    * Find all schedules with optional filters
+   * For agency users, only return schedules that have bookings from their agency's properties
+   * @param {Object} filters - Query filters
+   * @param {Object} scope - Access scope (agencyId for agency users)
    */
-  async findAll(filters = {}) {
+  async findAll(filters = {}, scope = {}) {
     const where = { isActive: true };
 
     if (filters.region) {
@@ -29,6 +32,21 @@ const inspectionScheduleRepository = {
       if (filters.date_to) {
         where.scheduleDate.lte = new Date(filters.date_to);
       }
+    }
+
+    // For agency users, only show schedules that have bookings for their agency's properties
+    if (scope.agencyId) {
+      where.slots = {
+        some: {
+          bookings: {
+            some: {
+              property: {
+                user: { agencyId: scope.agencyId },
+              },
+            },
+          },
+        },
+      };
     }
 
     const page = filters.page || 1;
@@ -66,22 +84,44 @@ const inspectionScheduleRepository = {
 
   /**
    * Find schedule by ID with slots
+   * For agency users, validates they have access (via property bookings)
+   * @param {number} id - Schedule ID
+   * @param {Object} scope - Access scope (agencyId for agency users)
    */
-  async findById(id) {
-    return prisma.inspectionSchedule.findUnique({
+  async findById(id, scope = {}) {
+    // Build include for slots - if agency user, filter bookings to only their agency's
+    const slotsInclude = {
+      orderBy: { startTime: 'asc' },
+      include: {
+        _count: {
+          select: { bookings: true },
+        },
+      },
+    };
+
+    // For agency users, only include bookings for their agency's properties
+    if (scope.agencyId) {
+      slotsInclude.include.bookings = {
+        where: {
+          property: {
+            user: { agencyId: scope.agencyId },
+          },
+        },
+        include: {
+          property: {
+            select: { id: true, address: true },
+          },
+        },
+      };
+    }
+
+    const schedule = await prisma.inspectionSchedule.findUnique({
       where: { id },
       include: {
         creator: {
           select: { id: true, name: true },
         },
-        slots: {
-          orderBy: { startTime: 'asc' },
-          include: {
-            _count: {
-              select: { bookings: true },
-            },
-          },
-        },
+        slots: slotsInclude,
         notifications: {
           include: {
             property: {
@@ -95,6 +135,18 @@ const inspectionScheduleRepository = {
         },
       },
     });
+
+    // For agency users, verify they have at least one booking in this schedule
+    if (schedule && scope.agencyId) {
+      const hasAccess = schedule.slots.some(
+        (slot) => slot.bookings && slot.bookings.length > 0
+      );
+      if (!hasAccess) {
+        return null; // No access to this schedule
+      }
+    }
+
+    return schedule;
   },
 
   /**

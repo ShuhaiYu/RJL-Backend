@@ -68,11 +68,31 @@ const userService = {
       throw new ConflictError('This email is already registered');
     }
 
+    // Agency roles (agency-admin, agency-user) must have an agency_id
+    const agencyRoles = [USER_ROLES.AGENCY_ADMIN, USER_ROLES.AGENCY_USER];
+    if (agencyRoles.includes(data.role) && !data.agency_id) {
+      throw new ForbiddenError('Agency users must belong to an agency');
+    }
+
+    // Non-agency roles (superuser, admin) should not have an agency_id
+    if (!agencyRoles.includes(data.role) && data.agency_id) {
+      throw new ForbiddenError('Superuser and admin users cannot belong to an agency');
+    }
+
     // Verify agency access for non-superuser/admin
     if (!['superuser', 'admin'].includes(requestingUser.role)) {
       if (data.agency_id !== requestingUser.agency_id) {
         throw new ForbiddenError('Cannot create user for another agency');
       }
+    }
+
+    // Prevent role escalation - cannot create users with higher role
+    const roleHierarchy = [USER_ROLES.AGENCY_USER, USER_ROLES.AGENCY_ADMIN, 'admin', 'superuser'];
+    const requestingRoleIndex = roleHierarchy.indexOf(requestingUser.role);
+    const targetRoleIndex = roleHierarchy.indexOf(data.role);
+
+    if (targetRoleIndex > requestingRoleIndex) {
+      throw new ForbiddenError('Cannot create a user with a role higher than your own');
     }
 
     // Hash password
@@ -86,16 +106,30 @@ const userService = {
 
     // Assign permissions based on role
     if (data.permissions && data.permissions.length > 0) {
-      // Custom permissions
-      const permissionIds = [];
-      for (const perm of data.permissions) {
-        const permission = await permissionRepository.getOrCreate(
-          perm.permission_value,
-          perm.permission_scope
-        );
-        permissionIds.push(permission.id);
+      // Only superuser and admin can set custom permissions
+      if (!['superuser', 'admin'].includes(requestingUser.role)) {
+        // Non-admin users get default permissions regardless of what they request
+        await permissionRepository.assignDefaultPermissions(user.id, user.role);
+      } else {
+        // Validate custom permissions don't exceed role defaults
+        const validationResult = this.validatePermissionsForRole(data.permissions, user.role);
+        if (!validationResult.valid) {
+          // Clean up created user and throw error
+          await userRepository.softDelete(user.id);
+          throw new ForbiddenError(validationResult.message);
+        }
+
+        // Custom permissions
+        const permissionIds = [];
+        for (const perm of data.permissions) {
+          const permission = await permissionRepository.getOrCreate(
+            perm.permission_value,
+            perm.permission_scope
+          );
+          permissionIds.push(permission.id);
+        }
+        await permissionRepository.assignManyToUser(user.id, permissionIds);
       }
-      await permissionRepository.assignManyToUser(user.id, permissionIds);
     } else {
       // Default permissions based on role
       await permissionRepository.assignDefaultPermissions(user.id, user.role);
@@ -126,13 +160,129 @@ const userService = {
       }
     }
 
-    // Hash password if being changed
+    // Password update restriction:
+    // - Only superuser/admin can change other users' passwords directly
+    // - Regular users must use /auth/change-password endpoint which requires old password
     if (data.password) {
+      const isSelf = requestingUser.user_id === id;
+      const isAdmin = ['superuser', 'admin'].includes(requestingUser.role);
+
+      if (isSelf && !isAdmin) {
+        throw new ForbiddenError('Use /auth/change-password endpoint to change your own password');
+      }
+
       data.password = await bcrypt.hash(data.password, 10);
+
+      // Clear refresh token when password is changed by admin
+      data.refresh_token = null;
     }
 
-    await userRepository.update(id, data);
+    // Track if permissions need to be updated
+    let permissionsChanged = false;
+
+    // Handle role change with permission sync
+    if (data.role && data.role !== user.role) {
+      // Only superuser and admin can change roles
+      if (!['superuser', 'admin'].includes(requestingUser.role)) {
+        throw new ForbiddenError('Only superuser or admin can change user roles');
+      }
+
+      // Prevent escalation to higher roles
+      const roleHierarchy = [USER_ROLES.AGENCY_USER, USER_ROLES.AGENCY_ADMIN, 'admin', 'superuser'];
+      const requestingRoleIndex = roleHierarchy.indexOf(requestingUser.role);
+      const targetRoleIndex = roleHierarchy.indexOf(data.role);
+
+      if (targetRoleIndex > requestingRoleIndex) {
+        throw new ForbiddenError('Cannot assign a role higher than your own');
+      }
+
+      // Validate agency_id based on new role
+      const agencyRoles = [USER_ROLES.AGENCY_ADMIN, USER_ROLES.AGENCY_USER];
+      const newAgencyId = data.agency_id !== undefined ? data.agency_id : user.agencyId;
+
+      if (agencyRoles.includes(data.role) && !newAgencyId) {
+        throw new ForbiddenError('Agency users must belong to an agency');
+      }
+      if (!agencyRoles.includes(data.role) && newAgencyId) {
+        throw new ForbiddenError('Superuser and admin users cannot belong to an agency');
+      }
+
+      // If sync_permissions_on_role_change is true (default), reset permissions
+      if (data.sync_permissions_on_role_change !== false) {
+        await permissionRepository.removeAllFromUser(id);
+        await permissionRepository.assignDefaultPermissions(id, data.role);
+        permissionsChanged = true;
+      }
+    }
+
+    // Handle explicit permissions update (only if role didn't change or sync was disabled)
+    if (data.permissions && Array.isArray(data.permissions) && !permissionsChanged) {
+      // Only superuser and admin can modify permissions
+      if (!['superuser', 'admin'].includes(requestingUser.role)) {
+        throw new ForbiddenError('Only superuser or admin can modify user permissions');
+      }
+
+      // Validate permissions don't exceed what's allowed for the role
+      const targetRole = data.role || user.role;
+      const validationResult = this.validatePermissionsForRole(data.permissions, targetRole);
+      if (!validationResult.valid) {
+        throw new ForbiddenError(validationResult.message);
+      }
+
+      // Remove existing permissions and assign new ones
+      await permissionRepository.removeAllFromUser(id);
+      const permissionIds = [];
+      for (const perm of data.permissions) {
+        const permission = await permissionRepository.getOrCreate(
+          perm.permission_value,
+          perm.permission_scope
+        );
+        permissionIds.push(permission.id);
+      }
+      await permissionRepository.assignManyToUser(id, permissionIds);
+      permissionsChanged = true;
+    }
+
+    // Remove non-user fields before update
+    const { permissions, sync_permissions_on_role_change, ...userData } = data;
+
+    // Invalidate refresh token if permissions changed (forces re-login)
+    if (permissionsChanged) {
+      userData.refresh_token = null;
+    }
+
+    await userRepository.update(id, userData);
+
     return userRepository.findByIdWithRelations(id);
+  },
+
+  /**
+   * Validate that custom permissions don't exceed role defaults
+   */
+  validatePermissionsForRole(permissions, role) {
+    const scopes = ['user', 'agency', 'property', 'task', 'contact', 'email', 'veu_project', 'setting', 'inspection'];
+    const allowedValues = {
+      'superuser': ['create', 'read', 'update', 'delete'],
+      'admin': ['create', 'read', 'update'],
+      'agency-admin': ['create', 'read', 'update'],
+      'agency-user': ['read'],
+    };
+
+    const allowed = allowedValues[role] || ['read'];
+
+    for (const perm of permissions) {
+      if (!scopes.includes(perm.permission_scope)) {
+        return { valid: false, message: `Invalid permission scope: ${perm.permission_scope}` };
+      }
+      if (!allowed.includes(perm.permission_value)) {
+        return {
+          valid: false,
+          message: `Permission '${perm.permission_value}' is not allowed for role '${role}'. Allowed: ${allowed.join(', ')}`,
+        };
+      }
+    }
+
+    return { valid: true };
   },
 
   /**

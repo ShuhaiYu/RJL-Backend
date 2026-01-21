@@ -169,6 +169,60 @@ const userRepository = {
       return (priority[a.role] || 99) - (priority[b.role] || 99);
     });
   },
+
+  /**
+   * Update password reset token
+   */
+  async updateResetToken(id, resetTokenHash, expiresAt) {
+    return prisma.user.update({
+      where: { id },
+      data: {
+        resetToken: resetTokenHash,
+        resetTokenExpires: expiresAt,
+      },
+    });
+  },
+
+  /**
+   * Find user by reset token hash
+   */
+  async findByResetToken(resetTokenHash) {
+    return prisma.user.findFirst({
+      where: {
+        resetToken: resetTokenHash,
+        resetTokenExpires: {
+          gt: new Date(),
+        },
+      },
+    });
+  },
+
+  /**
+   * Clear reset token
+   */
+  async clearResetToken(id) {
+    return prisma.user.update({
+      where: { id },
+      data: {
+        resetToken: null,
+        resetTokenExpires: null,
+      },
+    });
+  },
+
+  /**
+   * Deactivate all users by agency ID
+   * Also clears their refresh tokens to force re-login
+   */
+  async deactivateByAgencyId(agencyId) {
+    return prisma.user.updateMany({
+      where: { agencyId },
+      data: {
+        isActive: false,
+        refreshToken: null,
+      },
+    });
+  },
 };
 
 module.exports = userRepository;

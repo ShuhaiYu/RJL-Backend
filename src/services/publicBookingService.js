@@ -144,11 +144,11 @@ const publicBookingService = {
       throw new ValidationError('This time slot is no longer available');
     }
 
-    // Check if the property already has PROCESSING tasks (inspection already scheduled)
+    // Check if the property already has processing tasks (inspection already scheduled)
     const processingTask = await prisma.task.findFirst({
       where: {
         propertyId: notification.propertyId,
-        status: 'PROCESSING',
+        status: 'processing',
         isActive: true,
       },
     });

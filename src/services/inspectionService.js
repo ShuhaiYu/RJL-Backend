@@ -10,8 +10,8 @@ const inspectionSlotRepository = require('../repositories/inspectionSlotReposito
 const propertyRepository = require('../repositories/propertyRepository');
 const contactRepository = require('../repositories/contactRepository');
 const userRepository = require('../repositories/userRepository');
-const { NotFoundError, ValidationError, ConflictError } = require('../lib/errors');
-const { REGION, REGION_LABELS, SCHEDULE_STATUS } = require('../config/constants');
+const { NotFoundError, ValidationError, ConflictError, ForbiddenError } = require('../lib/errors');
+const { REGION, REGION_LABELS, SCHEDULE_STATUS, USER_ROLES } = require('../config/constants');
 
 const inspectionService = {
   // ==================== Config Methods ====================
@@ -98,6 +98,38 @@ const inspectionService = {
     };
   },
 
+  // ==================== Permission & Scope Methods ====================
+
+  /**
+   * Build inspection scope based on user role
+   * Superuser/Admin: No restrictions
+   * Agency Admin/User: Filter by agency_id
+   */
+  buildInspectionScope(requestingUser) {
+    if (['superuser', 'admin'].includes(requestingUser.role)) {
+      return {}; // No restrictions
+    }
+    // Agency admin and agency user - filter by agency
+    return { agencyId: requestingUser.agency_id };
+  },
+
+  /**
+   * Check if user can manage (create/update/delete) inspections
+   * Only superuser and admin can manage inspections
+   */
+  canManageInspection(requestingUser) {
+    return ['superuser', 'admin'].includes(requestingUser.role);
+  },
+
+  /**
+   * Validate manage permission and throw if not allowed
+   */
+  requireManagePermission(requestingUser, action = 'manage') {
+    if (!this.canManageInspection(requestingUser)) {
+      throw new ForbiddenError(`No permission to ${action} inspection schedules`);
+    }
+  },
+
   // ==================== Slot Generation Utilities ====================
 
   /**
@@ -152,9 +184,11 @@ const inspectionService = {
 
   /**
    * List schedules with filters
+   * For agency users, only return schedules that have bookings from their agency's properties
    */
-  async listSchedules(filters) {
-    const result = await inspectionScheduleRepository.findAll(filters);
+  async listSchedules(filters, requestingUser) {
+    const scope = this.buildInspectionScope(requestingUser);
+    const result = await inspectionScheduleRepository.findAll(filters, scope);
 
     return {
       data: result.schedules.map((schedule) => this.formatSchedule(schedule)),
@@ -164,9 +198,11 @@ const inspectionService = {
 
   /**
    * Get schedule by ID
+   * For agency users, validate they have access (via property bookings)
    */
-  async getScheduleById(id) {
-    const schedule = await inspectionScheduleRepository.findById(id);
+  async getScheduleById(id, requestingUser) {
+    const scope = this.buildInspectionScope(requestingUser);
+    const schedule = await inspectionScheduleRepository.findById(id, scope);
     if (!schedule) {
       throw new NotFoundError('Schedule not found');
     }
@@ -175,8 +211,12 @@ const inspectionService = {
 
   /**
    * Create multiple schedules for multiple dates (batch creation)
+   * Only superuser/admin can create schedules
    */
-  async createMultipleSchedules(data, userId) {
+  async createMultipleSchedules(data, requestingUser) {
+    // Permission check - only superuser/admin can create
+    this.requireManagePermission(requestingUser, 'create');
+
     const results = {
       created: [],
       skipped: [],
@@ -259,7 +299,7 @@ const inspectionService = {
             slot_duration: slotDuration,
             max_capacity: maxCapacity,
             note: data.note,
-            created_by: userId,
+            created_by: requestingUser.user_id,
           },
           slotsTemplate
         );
@@ -282,8 +322,12 @@ const inspectionService = {
 
   /**
    * Create a new schedule
+   * Only superuser/admin can create schedules
    */
-  async createSchedule(data, userId) {
+  async createSchedule(data, requestingUser) {
+    // Permission check - only superuser/admin can create
+    this.requireManagePermission(requestingUser, 'create');
+
     // Validate region
     if (!Object.values(REGION).includes(data.region)) {
       throw new ValidationError('Invalid region');
@@ -352,7 +396,7 @@ const inspectionService = {
         end_time: endTime,
         slot_duration: slotDuration,
         max_capacity: maxCapacity,
-        created_by: userId,
+        created_by: requestingUser.user_id,
       },
       slots
     );
@@ -362,8 +406,12 @@ const inspectionService = {
 
   /**
    * Update schedule
+   * Only superuser/admin can update schedules
    */
-  async updateSchedule(id, data) {
+  async updateSchedule(id, data, requestingUser) {
+    // Permission check - only superuser/admin can update
+    this.requireManagePermission(requestingUser, 'update');
+
     const schedule = await inspectionScheduleRepository.findById(id);
     if (!schedule) {
       throw new NotFoundError('Schedule not found');
@@ -375,8 +423,12 @@ const inspectionService = {
 
   /**
    * Delete schedule (soft delete)
+   * Only superuser/admin can delete schedules
    */
-  async deleteSchedule(id) {
+  async deleteSchedule(id, requestingUser) {
+    // Permission check - only superuser/admin can delete
+    this.requireManagePermission(requestingUser, 'delete');
+
     const schedule = await inspectionScheduleRepository.findById(id);
     if (!schedule) {
       throw new NotFoundError('Schedule not found');
@@ -389,15 +441,22 @@ const inspectionService = {
   /**
    * Get properties for a schedule's region with recipient info
    * Only returns properties that have at least one INCOMPLETE task
+   * For agency users, only returns properties from their agency
    */
-  async getScheduleProperties(scheduleId) {
+  async getScheduleProperties(scheduleId, requestingUser) {
     const schedule = await inspectionScheduleRepository.findById(scheduleId);
     if (!schedule) {
       throw new NotFoundError('Schedule not found');
     }
 
+    const scope = this.buildInspectionScope(requestingUser);
+
     // Get only properties in the same region that have at least one INCOMPLETE task
-    const properties = await propertyRepository.findByRegionWithIncompleteTasks(schedule.region);
+    // For agency users, also filter by agency
+    const properties = await propertyRepository.findByRegionWithIncompleteTasks(
+      schedule.region,
+      scope.agencyId
+    );
 
     // Process each property to get recipient info
     const propertiesWithRecipient = await Promise.all(
@@ -516,15 +575,22 @@ const inspectionService = {
    * Preview recipients by region (before creating schedules)
    * Shows all properties in the region that have INCOMPLETE tasks
    * and who will receive booking invitations
+   * For agency users, only shows properties from their agency
    */
-  async previewRecipientsByRegion(region) {
+  async previewRecipientsByRegion(region, requestingUser) {
     // Validate region
     if (!Object.values(REGION).includes(region)) {
       throw new ValidationError('Invalid region');
     }
 
+    const scope = this.buildInspectionScope(requestingUser);
+
     // Get only properties in the region that have at least one INCOMPLETE task
-    const properties = await propertyRepository.findByRegionWithIncompleteTasks(region);
+    // For agency users, also filter by agency
+    const properties = await propertyRepository.findByRegionWithIncompleteTasks(
+      region,
+      scope.agencyId
+    );
 
     // Process each property to get all potential recipients
     const propertiesWithRecipients = await Promise.all(

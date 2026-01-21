@@ -16,9 +16,9 @@ const createTaskSchema = z.object({
   task_description: z.string().optional().nullable(),
   due_date: z.string().datetime().optional().nullable(),
   inspection_date: z.string().datetime().optional().nullable(),
-  repeat_frequency: z.string().optional().default('none'),
-  type: z.string().max(255).optional().nullable(),
-  status: z.string().max(20).optional().default('unknown'),
+  repeat_frequency: z.enum(validFrequencies, { errorMap: () => ({ message: `Invalid repeat frequency. Must be one of: ${validFrequencies.join(', ')}` }) }).optional().default('none'),
+  type: z.enum(validTypes, { errorMap: () => ({ message: `Invalid task type. Must be one of: ${validTypes.join(', ')}` }) }).optional().nullable(),
+  status: z.enum(validStatuses, { errorMap: () => ({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }) }).optional().default('unknown'),
   free_check_available: z.boolean().optional().default(false),
 });
 
@@ -29,9 +29,9 @@ const createTasksSchema = z.object({
   task_description: z.string().optional().nullable(),
   due_date: z.string().datetime().optional().nullable(),
   inspection_date: z.string().datetime().optional().nullable(),
-  repeat_frequency: z.string().optional().default('none'),
-  type: z.string().max(255).optional().nullable(),
-  status: z.string().max(20).optional().default('unknown'),
+  repeat_frequency: z.enum(validFrequencies, { errorMap: () => ({ message: `Invalid repeat frequency. Must be one of: ${validFrequencies.join(', ')}` }) }).optional().default('none'),
+  type: z.enum(validTypes, { errorMap: () => ({ message: `Invalid task type. Must be one of: ${validTypes.join(', ')}` }) }).optional().nullable(),
+  status: z.enum(validStatuses, { errorMap: () => ({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }) }).optional().default('unknown'),
   free_check_available: z.boolean().optional().default(false),
 });
 
@@ -42,9 +42,9 @@ const updateTaskSchema = z.object({
   task_description: z.string().optional().nullable(),
   due_date: z.string().datetime().optional().nullable(),
   inspection_date: z.string().datetime().optional().nullable(),
-  repeat_frequency: z.string().optional(),
-  type: z.string().max(255).optional().nullable(),
-  status: z.string().max(20).optional(),
+  repeat_frequency: z.enum(validFrequencies, { errorMap: () => ({ message: `Invalid repeat frequency. Must be one of: ${validFrequencies.join(', ')}` }) }).optional(),
+  type: z.enum(validTypes, { errorMap: () => ({ message: `Invalid task type. Must be one of: ${validTypes.join(', ')}` }) }).optional().nullable(),
+  status: z.enum(validStatuses, { errorMap: () => ({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }) }).optional(),
   is_active: z.boolean().optional(),
   free_check_available: z.boolean().optional(),
 }).refine((data) => Object.keys(data).length > 0, {

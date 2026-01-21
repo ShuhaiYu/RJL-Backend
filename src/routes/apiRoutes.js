@@ -50,6 +50,7 @@ const {
   updatePropertySchema,
   propertyIdParamSchema,
   listPropertiesQuerySchema,
+  batchUpdateRegionSchema,
 } = require('../validators/propertyValidator');
 
 const {
@@ -91,6 +92,7 @@ router.get('/dashboard',
 // ==================== SETTINGS ROUTES ====================
 router.get('/google-map-key',
   authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'setting'),
   async (req, res, next) => {
     try {
       const key = await systemSettingsRepository.getGoogleMapKey();
@@ -103,6 +105,7 @@ router.get('/google-map-key',
 
 router.get('/settings',
   authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('read', 'setting'),
   async (req, res, next) => {
     try {
       const settings = await systemSettingsRepository.get();
@@ -130,6 +133,7 @@ router.get('/settings',
 
 router.put('/settings',
   authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('update', 'setting'),
   async (req, res, next) => {
     try {
       const settings = await systemSettingsRepository.update(req.body);
@@ -250,7 +254,7 @@ router.post('/agencies/:id/whitelist',
 
 router.delete('/agencies/:agency_id/whitelist/:whitelist_id',
   authMiddleware.authenticateToken,
-  authMiddleware.requirePermission('delete', 'agency'),
+  authMiddleware.requirePermission('update', 'agency'),  // Changed from 'delete' - whitelist management is part of agency update
   agencyController.removeFromWhitelist
 );
 
@@ -272,22 +276,8 @@ router.post('/properties',
 router.put('/properties/batch-update-region',
   authMiddleware.authenticateToken,
   authMiddleware.requirePermission('update', 'property'),
-  async (req, res, next) => {
-    try {
-      const { property_ids, region } = req.body;
-      if (!property_ids || !Array.isArray(property_ids) || property_ids.length === 0) {
-        return res.status(400).json({ success: false, message: 'property_ids is required and must be a non-empty array' });
-      }
-      if (!region) {
-        return res.status(400).json({ success: false, message: 'region is required' });
-      }
-      const propertyService = require('../services/propertyService');
-      const result = await propertyService.batchUpdateRegion(property_ids, region, req.user);
-      res.json({ success: true, data: result });
-    } catch (error) {
-      next(error);
-    }
-  }
+  validate(batchUpdateRegionSchema),
+  propertyController.batchUpdateRegion
 );
 
 router.get('/properties/:id',

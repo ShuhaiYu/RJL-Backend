@@ -7,8 +7,9 @@
 const { v4: uuidv4 } = require('uuid');
 const s3 = require('../../config/aws');
 const veuProjectFileRepository = require('../repositories/veuProjectFileRepository');
+const veuProjectService = require('../services/veuProjectService');
 const { sendSuccess, sendError } = require('../lib/response');
-const { NotFoundError } = require('../lib/errors');
+const { NotFoundError, ForbiddenError } = require('../lib/errors');
 const logger = require('../lib/logger');
 
 module.exports = {
@@ -21,6 +22,9 @@ module.exports = {
       const { veuProjectId } = req.params;
       const file = req.file;
       const { desc } = req.body;
+
+      // Verify user has access to this VEU project
+      await veuProjectService.getVeuProjectById(parseInt(veuProjectId, 10), req.user);
 
       if (!file) {
         return sendError(res, {
@@ -65,6 +69,10 @@ module.exports = {
   getVeuProjectFiles: async (req, res, next) => {
     try {
       const { veuProjectId } = req.params;
+
+      // Verify user has access to this VEU project
+      await veuProjectService.getVeuProjectById(parseInt(veuProjectId, 10), req.user);
+
       const files = await veuProjectFileRepository.findByVeuProjectId(parseInt(veuProjectId, 10));
 
       sendSuccess(res, {
@@ -82,6 +90,9 @@ module.exports = {
   deleteVeuProjectFile: async (req, res, next) => {
     try {
       const { veuProjectId, fileId } = req.params;
+
+      // Verify user has access to this VEU project
+      await veuProjectService.getVeuProjectById(parseInt(veuProjectId, 10), req.user);
 
       const fileRecord = await veuProjectFileRepository.findById(parseInt(fileId, 10));
       if (!fileRecord || fileRecord.veuProjectId !== parseInt(veuProjectId, 10)) {
@@ -114,6 +125,9 @@ module.exports = {
   getFileSignedUrl: async (req, res, next) => {
     try {
       const { veuProjectId, fileId } = req.params;
+
+      // Verify user has access to this VEU project
+      await veuProjectService.getVeuProjectById(parseInt(veuProjectId, 10), req.user);
 
       const fileRecord = await veuProjectFileRepository.findById(parseInt(fileId, 10));
       if (!fileRecord || fileRecord.veuProjectId !== parseInt(veuProjectId, 10)) {

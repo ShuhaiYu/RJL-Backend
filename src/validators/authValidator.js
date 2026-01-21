@@ -4,6 +4,9 @@
 
 const { z } = require('zod');
 
+// Simple password schema - minimum 8 characters
+const passwordSchema = z.string().min(8, 'Password must be at least 8 characters');
+
 // Login schema
 const loginSchema = z.object({
   email: z.string().email('Invalid email format'),
@@ -23,16 +26,17 @@ const forgotPasswordSchema = z.object({
 // Reset password schema
 const resetPasswordSchema = z.object({
   token: z.string().min(1, 'Token is required'),
-  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+  newPassword: passwordSchema,
 });
 
 // Change password schema
 const changePasswordSchema = z.object({
   oldPassword: z.string().min(1, 'Old password is required'),
-  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+  newPassword: passwordSchema,
 });
 
 module.exports = {
+  passwordSchema,
   loginSchema,
   refreshTokenSchema,
   forgotPasswordSchema,

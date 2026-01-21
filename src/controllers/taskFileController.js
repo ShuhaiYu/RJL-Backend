@@ -7,8 +7,9 @@
 const { v4: uuidv4 } = require('uuid');
 const s3 = require('../../config/aws');
 const taskFileRepository = require('../repositories/taskFileRepository');
+const taskService = require('../services/taskService');
 const { sendSuccess, sendError } = require('../lib/response');
-const { NotFoundError } = require('../lib/errors');
+const { NotFoundError, ForbiddenError } = require('../lib/errors');
 const logger = require('../lib/logger');
 
 module.exports = {
@@ -21,6 +22,9 @@ module.exports = {
       const { taskId } = req.params;
       const file = req.file;
       const { desc } = req.body;
+
+      // Verify user has access to this task
+      await taskService.getTaskById(parseInt(taskId, 10), req.user);
 
       if (!file) {
         return sendError(res, {
@@ -65,6 +69,10 @@ module.exports = {
   getTaskFiles: async (req, res, next) => {
     try {
       const { taskId } = req.params;
+
+      // Verify user has access to this task
+      await taskService.getTaskById(parseInt(taskId, 10), req.user);
+
       const files = await taskFileRepository.findByTaskId(parseInt(taskId, 10));
 
       sendSuccess(res, {
@@ -82,6 +90,9 @@ module.exports = {
   deleteTaskFile: async (req, res, next) => {
     try {
       const { taskId, fileId } = req.params;
+
+      // Verify user has access to this task
+      await taskService.getTaskById(parseInt(taskId, 10), req.user);
 
       const fileRecord = await taskFileRepository.findById(parseInt(fileId, 10));
       if (!fileRecord || fileRecord.taskId !== parseInt(taskId, 10)) {
@@ -114,6 +125,9 @@ module.exports = {
   getFileSignedUrl: async (req, res, next) => {
     try {
       const { taskId, fileId } = req.params;
+
+      // Verify user has access to this task
+      await taskService.getTaskById(parseInt(taskId, 10), req.user);
 
       const fileRecord = await taskFileRepository.findById(parseInt(fileId, 10));
       if (!fileRecord || fileRecord.taskId !== parseInt(taskId, 10)) {

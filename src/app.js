@@ -5,6 +5,11 @@
  */
 
 require('dotenv').config();
+
+// Validate environment variables before initializing the app
+const { validateEnv } = require('./config/validateEnv');
+validateEnv();
+
 const express = require('express');
 const cors = require('cors');
 
@@ -31,10 +36,14 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // CORS configuration
+if (!process.env.CORS_ORIGIN) {
+  throw new Error('CORS_ORIGIN environment variable is required');
+}
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 }));
 
 // Request logging (development only)

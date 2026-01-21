@@ -181,16 +181,18 @@ model TaskFile {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique @db.VarChar(255)
-  name         String?   @db.VarChar(255)
-  password     String    @db.VarChar(255)
-  role         String    @db.VarChar(50)
-  isActive     Boolean   @default(true) @map("is_active")
-  refreshToken String?   @map("refresh_token")
-  agencyId     Int?      @map("agency_id")
-  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  id                Int       @id @default(autoincrement())
+  email             String    @unique @db.VarChar(255)
+  name              String?   @db.VarChar(255)
+  password          String    @db.VarChar(255)
+  role              String    @db.VarChar(50)
+  isActive          Boolean   @default(true) @map("is_active")
+  refreshToken      String?   @map("refresh_token")
+  resetToken        String?   @map("reset_token") @db.VarChar(64)
+  resetTokenExpires DateTime? @map("reset_token_expires") @db.Timestamptz(6)
+  agencyId          Int?      @map("agency_id")
+  createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   // Relations
   agency                     Agency?                  @relation(fields: [agencyId], references: [id], onUpdate: NoAction, map: "fk_agency")

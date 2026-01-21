@@ -5,6 +5,7 @@
  */
 
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const userRepository = require('../repositories/userRepository');
@@ -12,9 +13,17 @@ const permissionRepository = require('../repositories/permissionRepository');
 const systemSettingsRepository = require('../repositories/systemSettingsRepository');
 const { UnauthorizedError, NotFoundError, ValidationError } = require('../lib/errors');
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'fallback_access_secret';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret';
-const ACCESS_EXPIRES = process.env.JWT_ACCESS_EXPIRES || '24h';
+// Validate required environment variables
+if (!process.env.JWT_ACCESS_SECRET) {
+  throw new Error('JWT_ACCESS_SECRET environment variable is required');
+}
+if (!process.env.JWT_REFRESH_SECRET) {
+  throw new Error('JWT_REFRESH_SECRET environment variable is required');
+}
+
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const ACCESS_EXPIRES = process.env.JWT_ACCESS_EXPIRES || '1h';
 const REFRESH_EXPIRES = process.env.JWT_REFRESH_EXPIRES || '7d';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
@@ -57,8 +66,9 @@ const authService = {
     const accessToken = jwt.sign(tokenPayload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES });
     const refreshToken = jwt.sign({ user_id: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
 
-    // Store refresh token
-    await userRepository.updateRefreshToken(user.id, refreshToken);
+    // Store hashed refresh token (like reset tokens)
+    const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    await userRepository.updateRefreshToken(user.id, refreshTokenHash);
 
     return {
       accessToken,
@@ -81,8 +91,11 @@ const authService = {
     try {
       const decoded = jwt.verify(refreshToken, REFRESH_SECRET);
 
+      // Hash the provided token to compare with stored hash
+      const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+
       // Verify token is still valid in database
-      const user = await userRepository.findByRefreshToken(refreshToken);
+      const user = await userRepository.findByRefreshToken(refreshTokenHash);
       if (!user || user.id !== decoded.user_id) {
         throw new UnauthorizedError('Invalid refresh token');
       }
@@ -137,8 +150,17 @@ const authService = {
       return { message: 'If the email exists, a reset link has been sent' };
     }
 
-    // Generate reset token (valid for 1 hour)
-    const resetToken = jwt.sign({ user_id: user.id }, ACCESS_SECRET, { expiresIn: '1h' });
+    // Generate secure random token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    // Store SHA256 hash of token in database
+    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+    // Token expires in 1 hour
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    // Store hashed token in database
+    await userRepository.updateResetToken(user.id, resetTokenHash, expiresAt);
+
+    // Send plain token in URL (user gets this, we store the hash)
     const resetUrl = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
 
     // Get email settings
@@ -174,30 +196,35 @@ const authService = {
 
   /**
    * Reset password with token
+   * Also invalidates all existing sessions by clearing refresh token
    */
   async resetPassword(token, newPassword) {
-    try {
-      const decoded = jwt.verify(token, ACCESS_SECRET);
-      const user = await userRepository.findById(decoded.user_id);
+    // Hash the provided token to compare with stored hash
+    const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-      if (!user) {
-        throw new NotFoundError('User');
-      }
+    // Find user by hashed token (also checks expiration)
+    const user = await userRepository.findByResetToken(resetTokenHash);
 
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
-      await userRepository.update(user.id, { password: hashedPassword });
-
-      return { message: 'Password reset successfully' };
-    } catch (error) {
-      if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-        throw new ValidationError('Invalid or expired reset token');
-      }
-      throw error;
+    if (!user) {
+      throw new ValidationError('Invalid or expired reset token');
     }
+
+    // Update password and clear refresh token to invalidate existing sessions
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await userRepository.update(user.id, {
+      password: hashedPassword,
+      refresh_token: null,
+    });
+
+    // Clear the reset token
+    await userRepository.clearResetToken(user.id);
+
+    return { message: 'Password reset successfully' };
   },
 
   /**
    * Change password (requires old password)
+   * Also invalidates all existing sessions by clearing refresh token
    */
   async changePassword(userId, oldPassword, newPassword) {
     const user = await userRepository.findById(userId);
@@ -211,9 +238,14 @@ const authService = {
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await userRepository.update(userId, { password: hashedPassword });
 
-    return { message: 'Password changed successfully' };
+    // Update password and clear refresh token to invalidate existing sessions
+    await userRepository.update(userId, {
+      password: hashedPassword,
+      refresh_token: null,
+    });
+
+    return { message: 'Password changed successfully. Please log in again.' };
   },
 };
 
