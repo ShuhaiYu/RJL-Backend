@@ -248,10 +248,15 @@ const inspectionController = {
    */
   async listBookings(req, res, next) {
     try {
+      console.log('[listBookings] req.user:', JSON.stringify(req.user));
+      console.log('[listBookings] req.query:', JSON.stringify(req.query));
       const filters = listBookingsQuerySchema.parse(req.query);
+      console.log('[listBookings] filters parsed:', JSON.stringify(filters));
       const result = await inspectionBookingService.listBookings(filters, req.user);
+      console.log('[listBookings] result count:', result.data?.length);
       sendSuccess(res, result);
     } catch (error) {
+      console.error('[listBookings] error:', error.message, error.stack);
       next(error);
     }
   },

@@ -65,8 +65,12 @@ const inspectionBookingService = {
    * For agency users, only returns bookings for their agency's properties
    */
   async listBookings(filters, requestingUser) {
+    console.log('[listBookings service] requestingUser:', JSON.stringify(requestingUser));
     const scope = this.buildInspectionScope(requestingUser);
+    console.log('[listBookings service] scope:', JSON.stringify(scope));
     const result = await inspectionBookingRepository.findAll(filters, scope);
+    console.log('[listBookings service] bookings count:', result.bookings?.length);
+    console.log('[listBookings service] first booking:', result.bookings?.[0] ? JSON.stringify(result.bookings[0], null, 2) : 'none');
     return {
       data: result.bookings.map((booking) => this.formatBooking(booking)),
       pagination: result.pagination,
