@@ -25,10 +25,8 @@ const TASK_STATUS = {
 
 // Task Types
 const TASK_TYPE = {
-  SMOKE_ALARM: 'smoke alarm',
-  GAS_ELECTRIC: 'gas/electric',
-  POOL_SAFETY: 'pool safety',
-  UNKNOWN: 'unknown',
+  SMOKE_ALARM: 'SMOKE_ALARM',
+  GAS_ELECTRICITY: 'GAS_&_ELECTRICITY',
 };
 
 // VEU Project Types
@@ -79,10 +77,12 @@ const NOTIFICATION_STATUS = {
 // Repeat Frequencies
 const REPEAT_FREQUENCY = {
   NONE: 'none',
-  DAILY: 'daily',
-  WEEKLY: 'weekly',
-  MONTHLY: 'monthly',
-  YEARLY: 'yearly',
+  ONE_MONTH: '1 month',
+  THREE_MONTHS: '3 months',
+  SIX_MONTHS: '6 months',
+  ONE_YEAR: '1 year',
+  TWO_YEARS: '2 years',
+  THREE_YEARS: '3 years',
 };
 
 // Permission Scopes

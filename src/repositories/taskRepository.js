@@ -75,7 +75,11 @@ const taskRepository = {
         include: {
           property: {
             include: {
-              user: true,
+              user: {
+                include: {
+                  agency: true,
+                },
+              },
               contacts: {
                 where: { isActive: true },
               },

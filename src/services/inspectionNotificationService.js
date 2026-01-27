@@ -70,10 +70,8 @@ async function sendInBatches(emailTasks, concurrency = 5) {
 
 // Task type labels for email display
 const TASK_TYPE_LABELS = {
-  'smoke alarm': 'Smoke Alarm',
-  'gas/electric': 'Gas & Electricity',
-  'pool safety': 'Pool Safety',
-  'unknown': 'Safety Check',
+  'SMOKE_ALARM': 'Smoke Alarm',
+  'GAS_&_ELECTRICITY': 'Gas & Electricity',
 };
 
 // Frontend URL for booking links

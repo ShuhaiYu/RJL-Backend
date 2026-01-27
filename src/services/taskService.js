@@ -36,10 +36,10 @@ const taskService = {
     const skip = (page - 1) * limit;
     const scope = await this.buildTaskScope(requestingUser);
 
-    // Convert status and type from URL format to database format
-    // URL format: DUE_SOON, SMOKE_ALARM -> Database format: due soon, smoke alarm
+    // Convert status from URL format to database format
+    // URL format: DUE_SOON -> Database format: due soon
+    // Type is now stored as-is (SMOKE_ALARM, GAS_&_ELECTRICITY)
     const normalizedStatus = status ? status.toLowerCase().replace(/_/g, ' ') : undefined;
-    const normalizedType = type ? type.toLowerCase().replace(/_/g, ' ') : undefined;
 
     const filters = {
       ...scope,
@@ -48,7 +48,7 @@ const taskService = {
       search,
       propertyId: property_id,
       status: normalizedStatus,
-      type: normalizedType,
+      type: type,
     };
 
     const { tasks, total } = await taskRepository.findAll(filters);
@@ -248,6 +248,8 @@ const taskService = {
         id: task.property.id,
         address: task.property.address,
       };
+      // Flat field for frontend compatibility
+      formatted.property_address = task.property.address;
 
       if (task.property.user) {
         formatted.user = {
@@ -255,6 +257,11 @@ const taskService = {
           name: task.property.user.name,
           email: task.property.user.email,
         };
+
+        // Include agency_name if available
+        if (task.property.user.agency) {
+          formatted.agency_name = task.property.user.agency.agencyName;
+        }
       }
 
       if (task.property.contacts) {

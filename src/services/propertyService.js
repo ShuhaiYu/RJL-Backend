@@ -251,6 +251,27 @@ const propertyService = {
       formatted.task_count = property._count.tasks;
     }
 
+    if (property.tasks) {
+      // Use property's agency info for all tasks
+      const agencyName = property.user?.agency?.agencyName || null;
+      const agencyId = property.user?.agency?.id || null;
+
+      formatted.tasks = property.tasks.map((t) => ({
+        id: t.id,
+        task_name: t.taskName,
+        task_description: t.taskDescription,
+        due_date: t.dueDate,
+        inspection_date: t.inspectionDate,
+        status: t.status,
+        type: t.type,
+        repeat_frequency: t.repeatFrequency,
+        is_active: t.isActive,
+        agency_id: t.agencyId || agencyId,
+        agency_name: agencyName,
+        free_check_available: t.freeCheckAvailable,
+      }));
+    }
+
     if (property.veuProjects) {
       formatted.veu_projects = property.veuProjects.map((v) => ({
         id: v.id,

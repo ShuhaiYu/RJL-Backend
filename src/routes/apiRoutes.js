@@ -18,6 +18,7 @@ const veuProjectController = require('../controllers/veuProjectController');
 const taskFileController = require('../controllers/taskFileController');
 const veuProjectFileController = require('../controllers/veuProjectFileController');
 const inspectionController = require('../controllers/inspectionController');
+const dataImportController = require('../controllers/dataImportController');
 
 // Repositories (for simple routes)
 const systemSettingsRepository = require('../repositories/systemSettingsRepository');
@@ -154,6 +155,16 @@ router.put('/settings',
       next(error);
     }
   }
+);
+
+// ==================== DATA IMPORT ROUTES ====================
+const csvUpload = createUpload(['text/csv'], { maxFileSize: 10 * 1024 * 1024 });
+
+router.post('/data-import',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('create', 'task'),
+  csvUpload.single('csv_file'),
+  dataImportController.importCsv
 );
 
 // ==================== USER ROUTES ====================
