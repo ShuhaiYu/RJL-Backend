@@ -49,7 +49,7 @@ const taskRepository = {
       ...(isActive !== undefined && { isActive }),
       ...(propertyId && { propertyId }),
       ...(agencyId && { agencyId }),
-      ...(status && { status: status.toUpperCase() }),
+      ...(status && { status: { equals: status, mode: 'insensitive' } }),
       ...(type && { type }),
       ...(search && {
         OR: [
@@ -222,7 +222,7 @@ const taskRepository = {
       inspectionDate: data.inspection_date ? new Date(data.inspection_date) : null,
       repeatFrequency: data.repeat_frequency || 'none',
       type: data.type,
-      status: data.status || 'unknown',
+      status: (data.status || 'UNKNOWN').toUpperCase(),
       emailId: data.email_id,
       freeCheckAvailable: data.free_check_available || false,
     }));
