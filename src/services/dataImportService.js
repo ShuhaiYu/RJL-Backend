@@ -11,6 +11,17 @@ const logger = require('../lib/logger');
 const { AppError } = require('../lib/errors');
 
 /**
+ * Check if job type indicates a "Safety Check" which requires both Gas and Alarm tasks
+ * @param {string} jobType - Job type from CSV
+ * @param {string} description - Description from CSV
+ * @returns {boolean} True if this is a safety check requiring both task types
+ */
+function isSafetyCheck(jobType, description) {
+  const combined = `${jobType || ''} ${description || ''}`.toLowerCase();
+  return combined.includes('safety check');
+}
+
+/**
  * Map Job Type from CSV to task type
  * Standardizes various CSV job type formats to system constants
  */
@@ -279,23 +290,56 @@ async function importCsv(csvBuffer, user) {
       // Parse due date
       const dueDate = parseDate(reference);
 
-      // Create task
-      // Use description field to determine task type (e.g., "Gas & Electricity Check", "Smoke Alarm Check")
-      await prisma.task.create({
-        data: {
-          propertyId: property.id,
-          agencyId: agency.id,
-          taskName: `[${jobNumber}] ${jobType || 'Safety Check'}`,
-          taskDescription: description || null,
-          dueDate: dueDate,
-          type: mapJobType(description),
-          status: 'unknown',
-          repeatFrequency: 'none',
-        },
-      });
+      // Check if this is a "Safety Check" which requires both Gas and Alarm tasks
+      if (isSafetyCheck(jobType, description)) {
+        // Create SMOKE_ALARM task
+        await prisma.task.create({
+          data: {
+            propertyId: property.id,
+            agencyId: agency.id,
+            taskName: `[${jobNumber}] ${jobType || 'Safety Check'} - Smoke Alarm`,
+            taskDescription: description || null,
+            dueDate: dueDate,
+            type: 'SMOKE_ALARM',
+            status: 'unknown',
+            repeatFrequency: 'none',
+          },
+        });
 
-      results.created++;
-      logger.debug(`Created task: [${jobNumber}]`);
+        // Create GAS_&_ELECTRICITY task
+        await prisma.task.create({
+          data: {
+            propertyId: property.id,
+            agencyId: agency.id,
+            taskName: `[${jobNumber}] ${jobType || 'Safety Check'} - Gas & Electricity`,
+            taskDescription: description || null,
+            dueDate: dueDate,
+            type: 'GAS_&_ELECTRICITY',
+            status: 'unknown',
+            repeatFrequency: 'none',
+          },
+        });
+
+        results.created += 2;
+        logger.debug(`Created dual tasks for Safety Check: [${jobNumber}]`);
+      } else {
+        // Create single task based on description/job type
+        await prisma.task.create({
+          data: {
+            propertyId: property.id,
+            agencyId: agency.id,
+            taskName: `[${jobNumber}] ${jobType || 'Safety Check'}`,
+            taskDescription: description || null,
+            dueDate: dueDate,
+            type: mapJobType(description),
+            status: 'unknown',
+            repeatFrequency: 'none',
+          },
+        });
+
+        results.created++;
+        logger.debug(`Created task: [${jobNumber}]`);
+      }
 
     } catch (error) {
       logger.error(`Error processing row ${rowNum}`, { error: error.message });
