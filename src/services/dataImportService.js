@@ -11,14 +11,13 @@ const logger = require('../lib/logger');
 const { AppError } = require('../lib/errors');
 
 /**
- * Check if job type indicates a "Safety Check" which requires both Gas and Alarm tasks
- * @param {string} jobType - Job type from CSV
+ * Check if description indicates a "Safety Check" which requires both Gas and Alarm tasks
  * @param {string} description - Description from CSV
  * @returns {boolean} True if this is a safety check requiring both task types
  */
-function isSafetyCheck(jobType, description) {
-  const combined = `${jobType || ''} ${description || ''}`.toLowerCase();
-  return combined.includes('safety check');
+function isSafetyCheck(description) {
+  if (!description) return false;
+  return description.toLowerCase().includes('safety check');
 }
 
 /**
@@ -291,8 +290,8 @@ async function importCsv(csvBuffer, user) {
       const dueDate = parseDate(reference);
 
       // Check if this is a "Safety Check" which requires both Gas and Alarm tasks
-      if (isSafetyCheck(jobType, description)) {
-        // Create SMOKE_ALARM task
+      if (isSafetyCheck(description)) {
+        // Create SMOKE_ALARM task (no type for unknown status)
         await prisma.task.create({
           data: {
             propertyId: property.id,
@@ -300,13 +299,12 @@ async function importCsv(csvBuffer, user) {
             taskName: `[${jobNumber}] ${jobType || 'Safety Check'} - Smoke Alarm`,
             taskDescription: description || null,
             dueDate: dueDate,
-            type: 'SMOKE_ALARM',
             status: 'unknown',
             repeatFrequency: 'none',
           },
         });
 
-        // Create GAS_&_ELECTRICITY task
+        // Create GAS_&_ELECTRICITY task (no type for unknown status)
         await prisma.task.create({
           data: {
             propertyId: property.id,
@@ -314,7 +312,6 @@ async function importCsv(csvBuffer, user) {
             taskName: `[${jobNumber}] ${jobType || 'Safety Check'} - Gas & Electricity`,
             taskDescription: description || null,
             dueDate: dueDate,
-            type: 'GAS_&_ELECTRICITY',
             status: 'unknown',
             repeatFrequency: 'none',
           },
