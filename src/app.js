@@ -112,20 +112,12 @@ app.use(errorHandler);
 // Only start background jobs if not in test environment
 if (process.env.NODE_ENV !== 'test') {
   // Import job modules
-  const { setupCronJobs, startImapListener } = require('./jobs');
+  const { setupCronJobs } = require('./jobs');
 
   // Setup cron jobs
   setupCronJobs();
 
-  // Start email listener (disabled by default, use Mailgun webhook instead)
-  // Set ENABLE_EMAIL_LISTENER=true to enable legacy IMAP listener
-  if (process.env.ENABLE_EMAIL_LISTENER === 'true') {
-    startImapListener().catch((error) => {
-      logger.error('Failed to start email listener', { error: error.message });
-    });
-  } else {
-    logger.info('IMAP email listener disabled. Using Mailgun webhook at /webhooks/mailgun/inbound');
-  }
+  logger.info('Email processing via Mailgun webhook at /webhooks/mailgun/inbound');
 }
 
 // ==================== SERVER STARTUP ====================
@@ -137,12 +129,6 @@ const gracefulShutdown = async (signal) => {
   logger.info(`Received ${signal}. Starting graceful shutdown...`);
 
   try {
-    // Stop email listener if running
-    if (process.env.NODE_ENV !== 'test' && process.env.ENABLE_EMAIL_LISTENER !== 'false') {
-      const { stopImapListener } = require('./jobs');
-      stopImapListener();
-    }
-
     await prisma.$disconnect();
     logger.info('Database connection closed');
     process.exit(0);
