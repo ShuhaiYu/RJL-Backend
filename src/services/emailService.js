@@ -143,36 +143,62 @@ const emailService = {
       }
     }
 
-    // Find agency based on sender email
+    // Find agency and responsible user based on sender email
+    // Priority: 1. System user  2. Agency whitelist
     let agency = null;
     let agencyUser = null;
+    let senderType = null; // 'user' or 'whitelist'
 
-    // Try to find agency by whitelist using extracted email address
     if (senderEmail) {
-      agency = await agencyWhitelistRepository.findAgencyByEmail(senderEmail);
+      // Step 1: Check if sender is a registered system user
+      const senderUser = await userRepository.findByEmail(senderEmail);
+
+      if (senderUser && senderUser.isActive && senderUser.agencyId) {
+        // Sender is a system user - use their agency and themselves as responsible user
+        agency = { id: senderUser.agencyId };
+        agencyUser = senderUser;
+        senderType = 'user';
+        logger.info('[Email] Sender is a registered user', {
+          senderEmail,
+          userId: senderUser.id,
+          agencyId: senderUser.agencyId
+        });
+      } else {
+        // Step 2: Check agency whitelist
+        agency = await agencyWhitelistRepository.findAgencyByEmail(senderEmail);
+
+        if (agency) {
+          // Sender is in whitelist - use agency admin as responsible user
+          const agencyUsers = await userRepository.findByAgencyIdWithPriority(agency.id);
+
+          if (agencyUsers.length > 0) {
+            agencyUser = agencyUsers[0]; // First user is agency-admin (priority sorted)
+            senderType = 'whitelist';
+            logger.info('[Email] Sender found in whitelist', {
+              senderEmail,
+              agencyId: agency.id,
+              assignedUserId: agencyUser.id,
+              assignedUserRole: agencyUser.role
+            });
+          }
+        }
+      }
     }
 
+    // Fallback for non-system requests (e.g., API calls with auth)
     if (!agency && requestingUser.role !== 'system') {
       agency = { id: requestingUser.agency_id };
+      agencyUser = { id: requestingUser.id };
+      senderType = 'api';
     }
 
-    if (!agency) {
+    if (!agency || !agencyUser) {
       logger.warn('[Email] Could not determine agency for email', { sender, senderEmail });
-      throw new ValidationError('Could not determine agency for this email. Please add sender to agency whitelist.');
+      throw new ValidationError(
+        'Could not determine agency for this email. ' +
+        'Sender must be either a registered user or in an agency whitelist.'
+      );
     }
-
-    // Get a user from the agency to assign the property
-    const { users } = await userRepository.findAll({
-      agencyId: agency.id,
-      isActive: true,
-      take: 1,
-    });
-
-    if (users.length === 0) {
-      throw new ValidationError('No active users found in agency');
-    }
-
-    agencyUser = users[0];
 
     // Create or find property
     // If no address extracted, use a placeholder address (propertyId is required)
