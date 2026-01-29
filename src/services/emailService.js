@@ -88,6 +88,29 @@ const emailService = {
   },
 
   /**
+   * Extract email address from sender string
+   * Handles formats like "John Doe <john@example.com>" or "john@example.com"
+   */
+  extractEmailAddress(sender) {
+    if (!sender) return null;
+
+    // Try to extract email from "Name <email>" format
+    const match = sender.match(/<([^>]+)>/);
+    if (match) {
+      return match[1].toLowerCase().trim();
+    }
+
+    // If no angle brackets, assume it's just the email
+    const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+    const emailMatch = sender.match(emailPattern);
+    if (emailMatch) {
+      return emailMatch[0].toLowerCase().trim();
+    }
+
+    return sender.toLowerCase().trim();
+  },
+
+  /**
    * Process incoming email using AI for extraction (for Mailgun webhook)
    * @param {Object} data - Email data from Mailgun
    * @param {Object} requestingUser - User context (system for webhooks)
@@ -103,11 +126,14 @@ const emailService = {
       }
     }
 
+    // Extract actual email address from sender
+    const senderEmail = this.extractEmailAddress(sender);
+    logger.info('[Email] Processing email', { subject, sender, senderEmail });
+
     // Use Gemini AI to extract information
-    logger.info('[Email] Extracting info with Gemini AI', { subject, sender });
     const extractedInfo = await geminiService.extractEmailInfo(subject, textBody);
 
-    // If no address found, we still create a task but without property
+    // Format address if found
     let formattedAddress = extractedInfo.address;
     if (formattedAddress) {
       try {
@@ -117,21 +143,22 @@ const emailService = {
       }
     }
 
-    // Find agency based on sender email domain
+    // Find agency based on sender email
     let agency = null;
     let agencyUser = null;
 
-    // Try to find agency by whitelist
-    agency = await agencyWhitelistRepository.findAgencyByEmail(sender);
+    // Try to find agency by whitelist using extracted email address
+    if (senderEmail) {
+      agency = await agencyWhitelistRepository.findAgencyByEmail(senderEmail);
+    }
 
     if (!agency && requestingUser.role !== 'system') {
       agency = { id: requestingUser.agency_id };
     }
 
     if (!agency) {
-      // Log warning but don't throw - create without agency assignment
-      logger.warn('[Email] Could not determine agency for email', { sender });
-      throw new ValidationError('Could not determine agency for this email');
+      logger.warn('[Email] Could not determine agency for email', { sender, senderEmail });
+      throw new ValidationError('Could not determine agency for this email. Please add sender to agency whitelist.');
     }
 
     // Get a user from the agency to assign the property
@@ -147,7 +174,8 @@ const emailService = {
 
     agencyUser = users[0];
 
-    // Create or find property (only if address was extracted)
+    // Create or find property
+    // If no address extracted, use a placeholder address (propertyId is required)
     let property = null;
     if (formattedAddress) {
       property = await propertyRepository.findByAddressAndUser(formattedAddress, agencyUser.id);
@@ -157,6 +185,17 @@ const emailService = {
           user_id: agencyUser.id,
         });
       }
+    } else {
+      // No address found - create property with placeholder
+      const placeholderAddress = `[待补充地址] - ${subject || 'Email'} - ${new Date().toISOString().slice(0, 10)}`;
+      property = await propertyRepository.create({
+        address: placeholderAddress,
+        user_id: agencyUser.id,
+      });
+      logger.warn('[Email] No address extracted, created placeholder property', {
+        propertyId: property.id,
+        placeholderAddress,
+      });
     }
 
     // Create email record
@@ -165,9 +204,9 @@ const emailService = {
       sender,
       email_body: textBody,
       html,
-      property_id: property?.id || null,
+      property_id: property.id,
       agency_id: agency.id,
-      gmail_msgid: messageId, // Reuse field for any message ID
+      gmail_msgid: messageId,
     });
 
     // Create contacts if extracted
@@ -179,7 +218,7 @@ const emailService = {
             name: contact.name || 'Unknown',
             phone: contact.phone,
             email: contact.email,
-            property_id: property?.id || null,
+            property_id: property.id,
           });
           createdContacts.push(newContact);
         }
@@ -191,7 +230,7 @@ const emailService = {
 
     // Create task from email
     const task = await taskRepository.create({
-      property_id: property?.id || null,
+      property_id: property.id,
       agency_id: agency.id,
       task_name: extractedInfo.summary || subject || 'New task from email',
       task_description: textBody?.substring(0, 500),
@@ -202,20 +241,19 @@ const emailService = {
 
     logger.info('[Email] Successfully processed email with AI', {
       emailId: email.id,
-      propertyId: property?.id,
+      propertyId: property.id,
       taskId: task.id,
       taskType,
       urgency: extractedInfo.urgency,
+      addressExtracted: !!extractedInfo.address,
     });
 
     return {
       email: this.formatEmail(email),
-      property: property
-        ? {
-            id: property.id,
-            address: property.address,
-          }
-        : null,
+      property: {
+        id: property.id,
+        address: property.address,
+      },
       contacts: createdContacts.length,
       task: {
         id: task.id,
@@ -225,6 +263,7 @@ const emailService = {
       extracted: {
         urgency: extractedInfo.urgency,
         summary: extractedInfo.summary,
+        addressFound: !!extractedInfo.address,
       },
     };
   },
