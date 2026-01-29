@@ -144,10 +144,10 @@ const emailService = {
     }
 
     // Find agency and responsible user based on sender email
-    // Priority: 1. System user  2. Agency whitelist
+    // Priority: 1. System user  2. Agency whitelist  3. System admin (fallback)
     let agency = null;
     let agencyUser = null;
-    let senderType = null; // 'user' or 'whitelist'
+    let senderType = null; // 'user', 'whitelist', 'unassigned'
 
     if (senderEmail) {
       // Step 1: Check if sender is a registered system user
@@ -192,12 +192,49 @@ const emailService = {
       senderType = 'api';
     }
 
+    // Step 3: Fallback to system admin if no agency found
+    // Email will be saved and marked as unassigned for manual review
     if (!agency || !agencyUser) {
-      logger.warn('[Email] Could not determine agency for email', { sender, senderEmail });
-      throw new ValidationError(
-        'Could not determine agency for this email. ' +
-        'Sender must be either a registered user or in an agency whitelist.'
-      );
+      logger.warn('[Email] Sender not recognized, using system admin fallback', { sender, senderEmail });
+
+      // Find a superuser or admin to handle unassigned emails
+      const { users: adminUsers } = await userRepository.findAll({
+        role: 'superuser',
+        isActive: true,
+        take: 1,
+      });
+
+      if (adminUsers.length === 0) {
+        // Try admin if no superuser
+        const { users: fallbackUsers } = await userRepository.findAll({
+          role: 'admin',
+          isActive: true,
+          take: 1,
+        });
+
+        if (fallbackUsers.length > 0) {
+          agencyUser = fallbackUsers[0];
+        }
+      } else {
+        agencyUser = adminUsers[0];
+      }
+
+      if (agencyUser) {
+        // Use the admin's agency if they have one, otherwise leave agency as null
+        agency = agencyUser.agencyId ? { id: agencyUser.agencyId } : null;
+        senderType = 'unassigned';
+        logger.info('[Email] Using system admin as fallback', {
+          adminUserId: agencyUser.id,
+          adminRole: agencyUser.role,
+          agencyId: agency?.id || null
+        });
+      } else {
+        // No admin found at all - this is a critical error
+        logger.error('[Email] No system admin found to handle unassigned email');
+        throw new ValidationError(
+          'System configuration error: No admin user available to process unassigned emails.'
+        );
+      }
     }
 
     // Create or find property
@@ -224,14 +261,14 @@ const emailService = {
       });
     }
 
-    // Create email record
+    // Create email record (agencyId can be null for unassigned emails)
     const email = await emailRepository.create({
       subject,
       sender,
       email_body: textBody,
       html,
       property_id: property.id,
-      agency_id: agency.id,
+      agency_id: agency?.id || null,
       gmail_msgid: messageId,
     });
 
@@ -254,24 +291,33 @@ const emailService = {
     // Map AI task type to our task types
     const taskType = this.mapTaskType(extractedInfo.taskType);
 
-    // Create task from email
-    const task = await taskRepository.create({
-      property_id: property.id,
-      agency_id: agency.id,
-      task_name: extractedInfo.summary || subject || 'New task from email',
-      task_description: textBody?.substring(0, 500),
-      email_id: email.id,
-      status: 'UNKNOWN',
-      type: taskType,
-    });
+    // Create task from email (only if we have an agency, since agencyId is required)
+    let task = null;
+    if (agency?.id) {
+      task = await taskRepository.create({
+        property_id: property.id,
+        agency_id: agency.id,
+        task_name: extractedInfo.summary || subject || 'New task from email',
+        task_description: textBody?.substring(0, 500),
+        email_id: email.id,
+        status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
+        type: taskType,
+      });
+    } else {
+      logger.warn('[Email] No agency available, task not created. Email saved for manual review.', {
+        emailId: email.id,
+        senderType,
+      });
+    }
 
     logger.info('[Email] Successfully processed email with AI', {
       emailId: email.id,
       propertyId: property.id,
-      taskId: task.id,
+      taskId: task?.id || null,
       taskType,
       urgency: extractedInfo.urgency,
       addressExtracted: !!extractedInfo.address,
+      senderType,
     });
 
     return {
@@ -281,16 +327,19 @@ const emailService = {
         address: property.address,
       },
       contacts: createdContacts.length,
-      task: {
-        id: task.id,
-        task_name: task.taskName,
-        type: taskType,
-      },
+      task: task
+        ? {
+            id: task.id,
+            task_name: task.taskName,
+            type: taskType,
+          }
+        : null,
       extracted: {
         urgency: extractedInfo.urgency,
         summary: extractedInfo.summary,
         addressFound: !!extractedInfo.address,
       },
+      senderType, // 'user', 'whitelist', 'unassigned', or 'api'
     };
   },
 
