@@ -36,10 +36,8 @@ const taskService = {
     const skip = (page - 1) * limit;
     const scope = await this.buildTaskScope(requestingUser);
 
-    // Convert status from URL format to database format
-    // URL format: DUE_SOON -> Database format: due soon
-    // Type is now stored as-is (SMOKE_ALARM, GAS_&_ELECTRICITY)
-    const normalizedStatus = status ? status.toLowerCase().replace(/_/g, ' ') : undefined;
+    // Status is stored as uppercase with underscores (e.g., DUE_SOON, COMPLETED)
+    // Type is stored as-is (SMOKE_ALARM, GAS_&_ELECTRICITY)
 
     const filters = {
       ...scope,
@@ -47,8 +45,8 @@ const taskService = {
       take: limit,
       search,
       propertyId: property_id,
-      status: normalizedStatus,
-      type: type,
+      status,
+      type,
     };
 
     const { tasks, total } = await taskRepository.findAll(filters);

@@ -12,15 +12,15 @@ const USER_ROLES = {
   AGENCY_USER: 'agency-user',
 };
 
-// Task Statuses
+// Task Statuses (uppercase with underscores)
 const TASK_STATUS = {
-  UNKNOWN: 'unknown',
-  INCOMPLETE: 'incomplete',
-  PROCESSING: 'processing',
-  DUE_SOON: 'due soon',
-  EXPIRED: 'expired',
-  COMPLETED: 'completed',
-  HISTORY: 'history',
+  UNKNOWN: 'UNKNOWN',
+  INCOMPLETE: 'INCOMPLETE',
+  PROCESSING: 'PROCESSING',
+  DUE_SOON: 'DUE_SOON',
+  EXPIRED: 'EXPIRED',
+  COMPLETED: 'COMPLETED',
+  HISTORY: 'HISTORY',
 };
 
 // Task Types
