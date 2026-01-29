@@ -12,8 +12,9 @@ const taskRepository = require('../repositories/taskRepository');
 const userRepository = require('../repositories/userRepository');
 const agencyWhitelistRepository = require('../repositories/agencyWhitelistRepository');
 const systemSettingsRepository = require('../repositories/systemSettingsRepository');
+const geminiService = require('./geminiService');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../lib/errors');
-const { USER_ROLES } = require('../config/constants');
+const { USER_ROLES, TASK_TYPE } = require('../config/constants');
 const { createPagination } = require('../lib/response');
 const logger = require('../lib/logger');
 
@@ -244,6 +245,161 @@ const emailService = {
     }
 
     return address;
+  },
+
+  /**
+   * Process incoming email using AI for extraction (for Mailgun webhook)
+   * @param {Object} data - Email data from Mailgun
+   * @param {Object} requestingUser - User context (system for webhooks)
+   */
+  async processEmailWithAI(data, requestingUser) {
+    const { subject, sender, textBody, html, messageId } = data;
+
+    // Check for duplicate using messageId
+    if (messageId) {
+      const exists = await emailRepository.existsByGmailMsgId(messageId);
+      if (exists) {
+        return { duplicate: true, message: 'Email already processed' };
+      }
+    }
+
+    // Use Gemini AI to extract information
+    logger.info('[Email] Extracting info with Gemini AI', { subject, sender });
+    const extractedInfo = await geminiService.extractEmailInfo(subject, textBody);
+
+    // If no address found, we still create a task but without property
+    let formattedAddress = extractedInfo.address;
+    if (formattedAddress) {
+      try {
+        formattedAddress = await this.formatAddress(formattedAddress);
+      } catch (error) {
+        logger.warn('[Email] Failed to format address', { error: error.message });
+      }
+    }
+
+    // Find agency based on sender email domain
+    let agency = null;
+    let agencyUser = null;
+
+    // Try to find agency by whitelist
+    agency = await agencyWhitelistRepository.findAgencyByEmail(sender);
+
+    if (!agency && requestingUser.role !== 'system') {
+      agency = { id: requestingUser.agency_id };
+    }
+
+    if (!agency) {
+      // Log warning but don't throw - create without agency assignment
+      logger.warn('[Email] Could not determine agency for email', { sender });
+      throw new ValidationError('Could not determine agency for this email');
+    }
+
+    // Get a user from the agency to assign the property
+    const { users } = await userRepository.findAll({
+      agencyId: agency.id,
+      isActive: true,
+      take: 1,
+    });
+
+    if (users.length === 0) {
+      throw new ValidationError('No active users found in agency');
+    }
+
+    agencyUser = users[0];
+
+    // Create or find property (only if address was extracted)
+    let property = null;
+    if (formattedAddress) {
+      property = await propertyRepository.findByAddressAndUser(formattedAddress, agencyUser.id);
+      if (!property) {
+        property = await propertyRepository.create({
+          address: formattedAddress,
+          user_id: agencyUser.id,
+        });
+      }
+    }
+
+    // Create email record
+    const email = await emailRepository.create({
+      subject,
+      sender,
+      email_body: textBody,
+      html,
+      property_id: property?.id || null,
+      agency_id: agency.id,
+      gmail_msgid: messageId, // Reuse field for any message ID
+    });
+
+    // Create contacts if extracted
+    const createdContacts = [];
+    if (extractedInfo.contacts && extractedInfo.contacts.length > 0) {
+      for (const contact of extractedInfo.contacts) {
+        if (contact.phone || contact.email) {
+          const newContact = await contactRepository.create({
+            name: contact.name || 'Unknown',
+            phone: contact.phone,
+            email: contact.email,
+            property_id: property?.id || null,
+          });
+          createdContacts.push(newContact);
+        }
+      }
+    }
+
+    // Map AI task type to our task types
+    const taskType = this.mapTaskType(extractedInfo.taskType);
+
+    // Create task from email
+    const task = await taskRepository.create({
+      property_id: property?.id || null,
+      agency_id: agency.id,
+      task_name: extractedInfo.summary || subject || 'New task from email',
+      task_description: textBody?.substring(0, 500),
+      email_id: email.id,
+      status: 'UNKNOWN',
+      type: taskType,
+    });
+
+    logger.info('[Email] Successfully processed email with AI', {
+      emailId: email.id,
+      propertyId: property?.id,
+      taskId: task.id,
+      taskType,
+      urgency: extractedInfo.urgency,
+    });
+
+    return {
+      email: this.formatEmail(email),
+      property: property
+        ? {
+            id: property.id,
+            address: property.address,
+          }
+        : null,
+      contacts: createdContacts.length,
+      task: {
+        id: task.id,
+        task_name: task.taskName,
+        type: taskType,
+      },
+      extracted: {
+        urgency: extractedInfo.urgency,
+        summary: extractedInfo.summary,
+      },
+    };
+  },
+
+  /**
+   * Map AI-detected task type to system task types
+   */
+  mapTaskType(aiTaskType) {
+    const mapping = {
+      SMOKE_ALARM: TASK_TYPE.SMOKE_ALARM,
+      'GAS_&_ELECTRICITY': TASK_TYPE.GAS_ELECTRICITY,
+      GAS: TASK_TYPE.GAS_ELECTRICITY,
+      ELECTRICITY: TASK_TYPE.GAS_ELECTRICITY,
+    };
+    return mapping[aiTaskType] || null;
   },
 
   /**

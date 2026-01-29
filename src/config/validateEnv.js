@@ -19,7 +19,9 @@ const optionalEnvVars = [
   { name: 'JWT_ACCESS_EXPIRES', default: '24h', description: 'Access token expiration' },
   { name: 'JWT_REFRESH_EXPIRES', default: '7d', description: 'Refresh token expiration' },
   { name: 'FRONTEND_URL', default: 'http://localhost:5173', description: 'Frontend URL' },
-  { name: 'ENABLE_EMAIL_LISTENER', default: 'true', description: 'Enable IMAP email listener' },
+  { name: 'ENABLE_EMAIL_LISTENER', default: 'false', description: 'Enable IMAP email listener (deprecated, use Mailgun webhook)' },
+  { name: 'GEMINI_API_KEY', default: '', description: 'Google Gemini API key for AI email extraction' },
+  { name: 'MAILGUN_WEBHOOK_SIGNING_KEY', default: '', description: 'Mailgun webhook signing key for verification' },
 ];
 
 /**

@@ -16,7 +16,7 @@ const cors = require('cors');
 const app = express();
 
 // Import routes
-const { authRoutes, apiRoutes, publicRoutes } = require('./routes');
+const { authRoutes, apiRoutes, publicRoutes, webhookRoutes } = require('./routes');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middlewares/errorHandler');
@@ -96,6 +96,9 @@ app.use('/api', apiRoutes);
 // Public routes (no authentication required)
 app.use('/public', publicRoutes);
 
+// Webhook routes (no authentication, verified by signature)
+app.use('/webhooks', webhookRoutes);
+
 // ==================== ERROR HANDLING ====================
 
 // 404 handler
@@ -114,11 +117,14 @@ if (process.env.NODE_ENV !== 'test') {
   // Setup cron jobs
   setupCronJobs();
 
-  // Start email listener (optional, can be disabled via env)
-  if (process.env.ENABLE_EMAIL_LISTENER !== 'false') {
+  // Start email listener (disabled by default, use Mailgun webhook instead)
+  // Set ENABLE_EMAIL_LISTENER=true to enable legacy IMAP listener
+  if (process.env.ENABLE_EMAIL_LISTENER === 'true') {
     startImapListener().catch((error) => {
       logger.error('Failed to start email listener', { error: error.message });
     });
+  } else {
+    logger.info('IMAP email listener disabled. Using Mailgun webhook at /webhooks/mailgun/inbound');
   }
 }
 
