@@ -34,7 +34,7 @@ const propertyIdParamSchema = z.object({
 const listPropertiesQuerySchema = z.object({
   search: z.string().optional(),
   page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().max(100).optional().default(50),
+  limit: z.coerce.number().int().positive().max(1000).optional().default(50),
   user_id: z.coerce.number().int().positive().optional(),
   region: z.enum(regionValues).optional(),
 });
