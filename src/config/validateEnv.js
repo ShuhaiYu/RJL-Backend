@@ -20,7 +20,7 @@ const optionalEnvVars = [
   { name: 'JWT_REFRESH_EXPIRES', default: '7d', description: 'Refresh token expiration' },
   { name: 'FRONTEND_URL', default: 'http://localhost:5173', description: 'Frontend URL' },
   { name: 'GEMINI_API_KEY', default: '', description: 'Google Gemini API key for AI email extraction' },
-  { name: 'MAILGUN_WEBHOOK_SIGNING_KEY', default: '', description: 'Mailgun webhook signing key for verification' },
+  { name: 'RESEND_WEBHOOK_SECRET', default: '', description: 'Resend webhook signing secret for verification' },
 ];
 
 /**

@@ -1,7 +1,7 @@
 /**
  * Webhook Controller
  *
- * Handles incoming webhooks from external services (Mailgun).
+ * Handles incoming webhooks from external services (Resend).
  */
 
 const crypto = require('crypto');
@@ -11,39 +11,53 @@ const { success, error } = require('../lib/response');
 
 const webhookController = {
   /**
-   * Handle Mailgun inbound email webhook
-   * POST /webhooks/mailgun/inbound
+   * Handle Resend inbound email webhook
+   * POST /webhooks/resend/inbound
    *
-   * Mailgun sends POST with multipart/form-data or application/x-www-form-urlencoded
-   * Fields: sender, recipient, subject, body-plain, body-html, stripped-text, etc.
+   * Resend sends POST with JSON body
+   * https://resend.com/docs/dashboard/webhooks/introduction
    */
-  async handleMailgunInbound(req, res) {
+  async handleResendInbound(req, res) {
     try {
-      logger.info('[Webhook] Received Mailgun inbound email', {
-        sender: req.body.sender,
-        recipient: req.body.recipient,
-        subject: req.body.subject,
+      const payload = req.body;
+
+      logger.info('[Webhook] Received Resend webhook', {
+        type: payload.type,
+        createdAt: payload.created_at,
       });
 
-      // Verify Mailgun signature (optional but recommended)
-      if (process.env.MAILGUN_WEBHOOK_SIGNING_KEY) {
-        const isValid = webhookController.verifyMailgunSignature(req.body);
+      // Verify Resend webhook signature (using Svix)
+      if (process.env.RESEND_WEBHOOK_SECRET) {
+        const isValid = webhookController.verifyResendSignature(req);
         if (!isValid) {
-          logger.warn('[Webhook] Invalid Mailgun signature');
+          logger.warn('[Webhook] Invalid Resend signature');
           return error(res, 'Invalid signature', 401);
         }
       }
 
-      // Extract email data from Mailgun webhook payload
-      const emailData = {
-        subject: req.body.subject || '',
-        sender: req.body.sender || req.body.from || '',
-        textBody: req.body['body-plain'] || req.body['stripped-text'] || '',
-        html: req.body['body-html'] || req.body['stripped-html'] || '',
-        recipient: req.body.recipient || '',
-        // Use Message-Id header as unique identifier
-        messageId: req.body['Message-Id'] || req.body['message-id'] || null,
+      // Only process email.received events
+      if (payload.type !== 'email.received') {
+        logger.info('[Webhook] Ignoring non-inbound event', { type: payload.type });
+        return success(res, { message: 'Event ignored' }, 200);
+      }
+
+      const emailData = payload.data;
+
+      // Extract email data from Resend webhook payload
+      const processData = {
+        subject: emailData.subject || '',
+        sender: emailData.from || '',
+        textBody: emailData.text || '',
+        html: emailData.html || '',
+        recipient: Array.isArray(emailData.to) ? emailData.to[0] : emailData.to || '',
+        messageId: emailData.email_id || null,
       };
+
+      logger.info('[Webhook] Processing inbound email', {
+        sender: processData.sender,
+        recipient: processData.recipient,
+        subject: processData.subject,
+      });
 
       // Process with system user context
       const systemUser = {
@@ -52,10 +66,10 @@ const webhookController = {
         agency_id: null,
       };
 
-      const result = await emailService.processEmailWithAI(emailData, systemUser);
+      const result = await emailService.processEmailWithAI(processData, systemUser);
 
       if (result.duplicate) {
-        logger.info('[Webhook] Duplicate email skipped', { messageId: emailData.messageId });
+        logger.info('[Webhook] Duplicate email skipped', { messageId: processData.messageId });
         return success(res, { message: 'Email already processed' }, 200);
       }
 
@@ -63,48 +77,72 @@ const webhookController = {
         emailId: result.email?.id,
         propertyId: result.property?.id,
         taskId: result.task?.id,
+        senderType: result.senderType,
       });
 
       return success(res, result, 201);
     } catch (err) {
-      logger.error('[Webhook] Failed to process Mailgun inbound', {
+      logger.error('[Webhook] Failed to process Resend inbound', {
         error: err.message,
         stack: err.stack,
       });
 
-      // Return 200 to prevent Mailgun from retrying (we logged the error)
-      // Change to 500 if you want Mailgun to retry on failures
+      // Return 200 to prevent Resend from retrying (we logged the error)
       return error(res, err.message, 200);
     }
   },
 
   /**
-   * Verify Mailgun webhook signature
-   * https://documentation.mailgun.com/en/latest/user_manual.html#webhooks
+   * Verify Resend webhook signature (Svix)
+   * https://resend.com/docs/dashboard/webhooks/verify-webhook-requests
    */
-  verifyMailgunSignature(body) {
-    const signingKey = process.env.MAILGUN_WEBHOOK_SIGNING_KEY;
-    if (!signingKey) return true; // Skip if not configured
+  verifyResendSignature(req) {
+    const secret = process.env.RESEND_WEBHOOK_SECRET;
+    if (!secret) return true; // Skip if not configured
 
-    const { timestamp, token, signature } = body;
-    if (!timestamp || !token || !signature) {
+    const svixId = req.headers['svix-id'];
+    const svixTimestamp = req.headers['svix-timestamp'];
+    const svixSignature = req.headers['svix-signature'];
+
+    if (!svixId || !svixTimestamp || !svixSignature) {
+      logger.warn('[Webhook] Missing Svix headers');
       return false;
     }
 
     // Check timestamp is within 5 minutes
     const currentTime = Math.floor(Date.now() / 1000);
-    if (Math.abs(currentTime - parseInt(timestamp)) > 300) {
-      logger.warn('[Webhook] Mailgun timestamp too old');
+    const webhookTime = parseInt(svixTimestamp);
+    if (Math.abs(currentTime - webhookTime) > 300) {
+      logger.warn('[Webhook] Resend timestamp too old');
       return false;
     }
 
-    // Verify HMAC signature
-    const encodedToken = crypto
-      .createHmac('sha256', signingKey)
-      .update(timestamp + token)
-      .digest('hex');
+    // Verify signature
+    // Svix signature format: "v1,signature1 v1,signature2"
+    const signedContent = `${svixId}.${svixTimestamp}.${JSON.stringify(req.body)}`;
 
-    return encodedToken === signature;
+    // Extract the secret (remove "whsec_" prefix if present)
+    const secretBytes = Buffer.from(
+      secret.startsWith('whsec_') ? secret.slice(6) : secret,
+      'base64'
+    );
+
+    const expectedSignature = crypto
+      .createHmac('sha256', secretBytes)
+      .update(signedContent)
+      .digest('base64');
+
+    // Check if any of the provided signatures match
+    const signatures = svixSignature.split(' ');
+    for (const sig of signatures) {
+      const [version, signature] = sig.split(',');
+      if (version === 'v1' && signature === expectedSignature) {
+        return true;
+      }
+    }
+
+    logger.warn('[Webhook] Resend signature mismatch');
+    return false;
   },
 
   /**

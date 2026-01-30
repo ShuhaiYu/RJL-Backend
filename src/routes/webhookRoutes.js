@@ -1,7 +1,7 @@
 /**
  * Webhook Routes
  *
- * Routes for handling external webhooks (Mailgun, etc.)
+ * Routes for handling external webhooks (Resend, etc.)
  * These routes do NOT require authentication.
  */
 
@@ -12,8 +12,8 @@ const webhookController = require('../controllers/webhookController');
 // Health check
 router.get('/health', webhookController.healthCheck);
 
-// Mailgun inbound email webhook
-// Mailgun sends POST requests with form-encoded or multipart data
-router.post('/mailgun/inbound', webhookController.handleMailgunInbound);
+// Resend inbound email webhook
+// Resend sends POST requests with JSON body
+router.post('/resend/inbound', webhookController.handleResendInbound);
 
 module.exports = router;
