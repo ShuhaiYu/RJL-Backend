@@ -30,7 +30,13 @@ const prisma = require('./config/prisma');
 // ==================== MIDDLEWARE ====================
 
 // Parse JSON request bodies
-app.use(express.json({ limit: '10mb' }));
+// Preserve raw body for webhook signature verification
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString();
+  },
+}));
 
 // Parse URL-encoded bodies
 app.use(express.urlencoded({ extended: true }));
@@ -117,7 +123,7 @@ if (process.env.NODE_ENV !== 'test') {
   // Setup cron jobs
   setupCronJobs();
 
-  logger.info('Email processing via Mailgun webhook at /webhooks/mailgun/inbound');
+  logger.info('Email processing via Resend webhook at /webhooks/resend/inbound');
 }
 
 // ==================== SERVER STARTUP ====================

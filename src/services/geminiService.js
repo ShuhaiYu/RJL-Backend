@@ -10,6 +10,12 @@ const logger = require('../lib/logger');
 // Initialize Gemini client
 let genAI = null;
 
+// Circuit breaker state
+let consecutiveFailures = 0;
+let circuitBreakerResetTime = 0;
+const MAX_FAILURES = 5;
+const CIRCUIT_BREAKER_TIMEOUT = 60000; // 1 minute
+
 function getGenAI() {
   if (!genAI) {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -21,6 +27,20 @@ function getGenAI() {
   return genAI;
 }
 
+/**
+ * Get default extraction result
+ * @param {string} subject - Email subject for summary
+ */
+function getDefaultResult(subject) {
+  return {
+    address: null,
+    contacts: [],
+    taskType: 'OTHER',
+    urgency: 'MEDIUM',
+    summary: subject || 'New email task',
+  };
+}
+
 const geminiService = {
   /**
    * Extract tenant information from email using AI
@@ -29,6 +49,15 @@ const geminiService = {
    * @returns {Promise<Object>} Extracted information
    */
   async extractEmailInfo(subject, body) {
+    // Check circuit breaker
+    if (consecutiveFailures >= MAX_FAILURES && Date.now() < circuitBreakerResetTime) {
+      logger.warn('[Gemini] Circuit breaker open, using defaults', {
+        consecutiveFailures,
+        resetIn: Math.ceil((circuitBreakerResetTime - Date.now()) / 1000),
+      });
+      return getDefaultResult(subject);
+    }
+
     try {
       const model = getGenAI().getGenerativeModel({ model: 'gemini-1.5-flash' });
 
@@ -102,6 +131,9 @@ Rules:
         urgency: extracted.urgency,
       });
 
+      // Reset circuit breaker on success
+      consecutiveFailures = 0;
+
       return {
         address: extracted.address || null,
         contacts: Array.isArray(extracted.contacts) ? extracted.contacts : [],
@@ -110,19 +142,24 @@ Rules:
         summary: extracted.summary || subject || 'New email task',
       };
     } catch (error) {
+      // Increment failure count and potentially trigger circuit breaker
+      consecutiveFailures++;
+      if (consecutiveFailures >= MAX_FAILURES) {
+        circuitBreakerResetTime = Date.now() + CIRCUIT_BREAKER_TIMEOUT;
+        logger.error('[Gemini] Circuit breaker triggered', {
+          consecutiveFailures,
+          resetIn: CIRCUIT_BREAKER_TIMEOUT / 1000,
+        });
+      }
+
       logger.error('[Gemini] Failed to extract email info', {
         error: error.message,
         subject,
+        consecutiveFailures,
       });
 
       // Return default structure on error
-      return {
-        address: null,
-        contacts: [],
-        taskType: 'OTHER',
-        urgency: 'MEDIUM',
-        summary: subject || 'New email task',
-      };
+      return getDefaultResult(subject);
     }
   },
 

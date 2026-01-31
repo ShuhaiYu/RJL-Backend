@@ -5,6 +5,7 @@
  */
 
 const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 const emailRepository = require('../repositories/emailRepository');
 const propertyRepository = require('../repositories/propertyRepository');
 const contactRepository = require('../repositories/contactRepository');
@@ -250,7 +251,8 @@ const emailService = {
       }
     } else {
       // No address found - create property with placeholder
-      const placeholderAddress = `[待补充地址] - ${subject || 'Email'} - ${new Date().toISOString().slice(0, 10)}`;
+      // Include UUID to ensure uniqueness for similar subjects
+      const placeholderAddress = `[待补充地址] ${uuidv4().slice(0, 8)} - ${subject || 'Email'} - ${new Date().toISOString().slice(0, 10)}`;
       property = await propertyRepository.create({
         address: placeholderAddress,
         user_id: agencyUser.id,

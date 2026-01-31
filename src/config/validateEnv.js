@@ -11,6 +11,7 @@ const requiredEnvVars = [
   { name: 'JWT_ACCESS_SECRET', description: 'JWT access token signing secret' },
   { name: 'JWT_REFRESH_SECRET', description: 'JWT refresh token signing secret' },
   { name: 'CORS_ORIGIN', description: 'Allowed CORS origins (comma-separated)' },
+  { name: 'RESEND_API_KEY', description: 'Resend API key for fetching email content' },
 ];
 
 const optionalEnvVars = [
