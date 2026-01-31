@@ -126,7 +126,7 @@ async function runTaskStatusUpdate(req, res) {
 
 /**
  * Run email processing job
- * Schedule: */5 * * * * (every 5 minutes)
+ * Schedule: every 5 minutes (cron: 0/5 * * * *)
  *
  * GET /api/cron/process-emails
  */
