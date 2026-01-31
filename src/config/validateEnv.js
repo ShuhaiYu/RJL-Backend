@@ -21,8 +21,12 @@ const optionalEnvVars = [
   { name: 'JWT_REFRESH_EXPIRES', default: '7d', description: 'Refresh token expiration' },
   { name: 'FRONTEND_URL', default: 'http://localhost:5173', description: 'Frontend URL' },
   { name: 'GEMINI_API_KEY', default: '', description: 'Google Gemini API key for AI email extraction' },
-  { name: 'RESEND_WEBHOOK_SECRET', default: '', description: 'Resend webhook signing secret for verification' },
-  { name: 'CRON_SECRET', default: '', description: 'Secret for Vercel Cron job authentication' },
+];
+
+// These variables are optional in development but REQUIRED in production for security
+const productionRequiredEnvVars = [
+  { name: 'RESEND_WEBHOOK_SECRET', description: 'Resend webhook signing secret (required in production)' },
+  { name: 'CRON_SECRET', description: 'Secret for Vercel Cron job authentication (required in production)' },
 ];
 
 /**
@@ -32,11 +36,28 @@ const optionalEnvVars = [
 function validateEnv() {
   const missing = [];
   const warnings = [];
+  const isProduction = process.env.NODE_ENV === 'production';
 
   // Check required variables
   for (const envVar of requiredEnvVars) {
     if (!process.env[envVar.name]) {
       missing.push(`${envVar.name} - ${envVar.description}`);
+    }
+  }
+
+  // Check production-required variables
+  if (isProduction) {
+    for (const envVar of productionRequiredEnvVars) {
+      if (!process.env[envVar.name]) {
+        missing.push(`${envVar.name} - ${envVar.description}`);
+      }
+    }
+  } else {
+    // In development, warn about missing production-required variables
+    for (const envVar of productionRequiredEnvVars) {
+      if (!process.env[envVar.name]) {
+        warnings.push(`⚠️  ${envVar.name} not set - this is REQUIRED in production`);
+      }
     }
   }
 
@@ -59,7 +80,7 @@ function validateEnv() {
     throw new Error(errorMessage);
   }
 
-  logger.info('Environment validation passed');
+  logger.info('Environment validation passed', { environment: isProduction ? 'production' : 'development' });
 }
 
-module.exports = { validateEnv, requiredEnvVars, optionalEnvVars };
+module.exports = { validateEnv, requiredEnvVars, optionalEnvVars, productionRequiredEnvVars };

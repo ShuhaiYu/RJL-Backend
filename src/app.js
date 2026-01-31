@@ -12,6 +12,7 @@ validateEnv();
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 
 const app = express();
 
@@ -21,13 +22,38 @@ const { authRoutes, apiRoutes, publicRoutes, webhookRoutes, cronRoutes } = requi
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middlewares/errorHandler');
 
-// Import logger
+// Import logger with correlation ID middleware
 const logger = require('./lib/logger');
+const { correlationIdMiddleware } = require('./lib/logger');
 
 // Import Prisma client for connection management
 const prisma = require('./config/prisma');
 
 // ==================== MIDDLEWARE ====================
+
+// Correlation ID for request tracing
+// Must be early in middleware chain to capture all logs
+app.use(correlationIdMiddleware);
+
+// Security headers via helmet
+// Provides protection against well-known web vulnerabilities
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Disable for API compatibility
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow CORS resources
+}));
 
 // Parse JSON request bodies
 // Preserve raw body for webhook signature verification

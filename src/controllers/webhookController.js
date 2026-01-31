@@ -88,8 +88,9 @@ const webhookController = {
           emailId,
           error: fetchError.message,
         });
-        // Return 200 to prevent retry, but log the failure
-        return sendError(res, { statusCode: 200, message: 'Email fetch failed' });
+        // Return 502 (Bad Gateway) since we failed to fetch from upstream
+        // Resend may retry, which is desired for transient failures
+        return sendError(res, { statusCode: 502, message: 'Failed to fetch email content' });
       }
 
       // Check if recipient domain is allowed
@@ -148,9 +149,10 @@ const webhookController = {
         stack: err.stack,
       });
 
-      // Return 200 to prevent Resend from retrying (we logged the error)
+      // Return 500 for internal errors
+      // For persistent failures, configure Resend webhook retry settings appropriately
       // Don't expose internal error details to external callers
-      return sendError(res, { statusCode: 200, message: 'Email processing failed' });
+      return sendError(res, { statusCode: 500, message: 'Internal processing error' });
     }
   },
 
@@ -161,14 +163,11 @@ const webhookController = {
   verifyResendSignature(req) {
     const secret = process.env.RESEND_WEBHOOK_SECRET;
 
-    // Production environment requires webhook secret
+    // Webhook secret is ALWAYS required - no bypass allowed
+    // This is a security requirement: unverified webhooks could lead to data injection
     if (!secret) {
-      if (process.env.NODE_ENV === 'production') {
-        logger.error('[Webhook] RESEND_WEBHOOK_SECRET not configured in production');
-        return false;
-      }
-      logger.warn('[Webhook] Skipping signature verification in development');
-      return true;
+      logger.error('[Webhook] RESEND_WEBHOOK_SECRET not configured - rejecting request');
+      return false;
     }
 
     const svixId = req.headers['svix-id'];
