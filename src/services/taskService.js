@@ -281,6 +281,16 @@ const taskService = {
       }));
     }
 
+    // 每个 task 关联一个 email，但前端期望 emails 数组格式
+    if (task.email) {
+      formatted.emails = [{
+        id: task.email.id,
+        subject: task.email.subject,
+        sender: task.email.sender,
+        email_body: task.email.emailBody,
+      }];
+    }
+
     return formatted;
   },
 };
