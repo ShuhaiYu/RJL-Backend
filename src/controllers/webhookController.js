@@ -14,10 +14,11 @@ const { sendSuccess, sendError } = require('../lib/response');
 const ALLOWED_DOMAIN = 'rjlagroup.com';
 
 /**
- * Fetch full email content from Resend API
+ * Fetch full inbound email content from Resend Receiving API
  * Webhook payload doesn't include email body, so we need to fetch it separately
+ * https://resend.com/docs/api-reference/emails/retrieve-received-email
  * @param {string} emailId - The email ID from webhook payload
- * @returns {Promise<Object>} Full email content
+ * @returns {Promise<Object>} Full email content including html, text, headers
  */
 async function fetchEmailContent(emailId) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -25,8 +26,9 @@ async function fetchEmailContent(emailId) {
     throw new Error('RESEND_API_KEY is not configured');
   }
 
+  // Use the Receiving API endpoint for inbound emails
   const response = await axios.get(
-    `https://api.resend.com/emails/${emailId}`,
+    `https://api.resend.com/emails/receiving/${emailId}`,
     {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
