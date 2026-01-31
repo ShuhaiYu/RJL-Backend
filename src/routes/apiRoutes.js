@@ -116,10 +116,6 @@ router.get('/settings',
       res.json({
         success: true,
         data: {
-          imap_host: settings.imapHost,
-          imap_port: settings.imapPort,
-          imap_user: settings.imapUser,
-          imap_password: settings.imapPassword,
           email_user: settings.emailUser,
           email_password: settings.emailPassword,
           email_host: settings.emailHost,
@@ -141,10 +137,6 @@ router.put('/settings',
       res.json({
         success: true,
         data: {
-          imap_host: settings.imapHost,
-          imap_port: settings.imapPort,
-          imap_user: settings.imapUser,
-          imap_password: settings.imapPassword,
           email_user: settings.emailUser,
           email_password: settings.emailPassword,
           email_host: settings.emailHost,

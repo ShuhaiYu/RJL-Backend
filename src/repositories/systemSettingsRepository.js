@@ -36,10 +36,6 @@ const systemSettingsRepository = {
     const updateData = {};
     if (data.email_host !== undefined) updateData.emailHost = data.email_host;
     if (data.google_map_key !== undefined) updateData.googleMapKey = data.google_map_key;
-    if (data.imap_host !== undefined) updateData.imapHost = data.imap_host;
-    if (data.imap_port !== undefined) updateData.imapPort = data.imap_port;
-    if (data.imap_user !== undefined) updateData.imapUser = data.imap_user;
-    if (data.imap_password !== undefined) updateData.imapPassword = data.imap_password;
     if (data.email_user !== undefined) updateData.emailUser = data.email_user;
     if (data.email_password !== undefined) updateData.emailPassword = data.email_password;
 
@@ -55,21 +51,6 @@ const systemSettingsRepository = {
   async getGoogleMapKey() {
     const settings = await this.get();
     return settings?.googleMapKey;
-  },
-
-  /**
-   * Get IMAP settings
-   */
-  async getImapSettings() {
-    const settings = await this.get();
-    if (!settings) return null;
-
-    return {
-      host: settings.imapHost,
-      port: settings.imapPort,
-      user: settings.imapUser,
-      password: settings.imapPassword,
-    };
   },
 
   /**

@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const emailService = require('../services/emailService');
 const logger = require('../lib/logger');
-const { success, error } = require('../lib/response');
+const { sendSuccess, sendError } = require('../lib/response');
 
 // Allowed domain for inbound emails
 const ALLOWED_DOMAIN = 'rjlagroup.com';
@@ -31,9 +31,62 @@ async function fetchEmailContent(emailId) {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
+      timeout: 5000, // 5 second timeout
     }
   );
   return response.data;
+}
+
+/**
+ * Process email in background (fire and forget)
+ * This allows us to respond to webhook quickly while processing continues
+ */
+async function processEmailInBackground(emailId, fullEmail, recipients) {
+  try {
+    // Extract email data from full email content
+    const processData = {
+      subject: fullEmail.subject || '',
+      sender: fullEmail.from || '',
+      textBody: fullEmail.text || '',
+      html: fullEmail.html || '',
+      recipient: recipients[0] || '',
+      messageId: emailId,
+    };
+
+    logger.info('[Webhook] Processing inbound email in background', {
+      sender: processData.sender,
+      recipient: processData.recipient,
+      subject: processData.subject,
+      bodyLength: processData.textBody?.length || 0,
+    });
+
+    // Process with system user context
+    const systemUser = {
+      id: 0,
+      role: 'system',
+      agency_id: null,
+    };
+
+    const result = await emailService.processEmailWithAI(processData, systemUser);
+
+    if (result.duplicate) {
+      logger.info('[Webhook] Duplicate email skipped', { messageId: processData.messageId });
+      return;
+    }
+
+    logger.info('[Webhook] Email processed successfully', {
+      emailId: result.email?.id,
+      propertyId: result.property?.id,
+      taskId: result.task?.id,
+      senderType: result.senderType,
+    });
+  } catch (err) {
+    logger.error('[Webhook] Background email processing failed', {
+      emailId,
+      error: err.message,
+      stack: err.stack,
+    });
+  }
 }
 
 const webhookController = {
@@ -57,13 +110,13 @@ const webhookController = {
       const isValid = webhookController.verifyResendSignature(req);
       if (!isValid) {
         logger.warn('[Webhook] Invalid Resend signature');
-        return error(res, 'Invalid signature', 401);
+        return sendError(res, { statusCode: 401, message: 'Invalid signature' });
       }
 
       // Only process email.received events
       if (payload.type !== 'email.received') {
         logger.info('[Webhook] Ignoring non-inbound event', { type: payload.type });
-        return success(res, { message: 'Event ignored' }, 200);
+        return sendSuccess(res, { statusCode: 200, message: 'Event ignored' });
       }
 
       const emailData = payload.data;
@@ -84,7 +137,7 @@ const webhookController = {
           error: fetchError.message,
         });
         // Return 200 to prevent retry, but log the failure
-        return error(res, 'Email processing failed', 200);
+        return sendError(res, { statusCode: 200, message: 'Email fetch failed' });
       }
 
       // Check if recipient domain is allowed
@@ -99,48 +152,21 @@ const webhookController = {
           to: recipients,
           allowedDomain: ALLOWED_DOMAIN,
         });
-        return success(res, { message: 'Domain not handled' }, 200);
+        return sendSuccess(res, { statusCode: 200, message: 'Domain not handled' });
       }
 
-      // Extract email data from full email content
-      const processData = {
-        subject: fullEmail.subject || '',
-        sender: fullEmail.from || '',
-        textBody: fullEmail.text || '',
-        html: fullEmail.html || '',
-        recipient: recipients[0] || '',
-        messageId: emailId,
-      };
+      // Respond immediately to webhook, then process in background
+      // This prevents Vercel timeout (10s limit on free tier)
+      // Note: On Vercel, background processing may be cut off after response is sent
+      // For more reliable processing, consider using a queue service like Upstash QStash
 
-      logger.info('[Webhook] Processing inbound email', {
-        sender: processData.sender,
-        recipient: processData.recipient,
-        subject: processData.subject,
-        bodyLength: processData.textBody?.length || 0,
+      // Start background processing (don't await)
+      processEmailInBackground(emailId, fullEmail, recipients).catch(err => {
+        logger.error('[Webhook] Background processing error', { error: err.message });
       });
 
-      // Process with system user context
-      const systemUser = {
-        id: 0,
-        role: 'system',
-        agency_id: null,
-      };
-
-      const result = await emailService.processEmailWithAI(processData, systemUser);
-
-      if (result.duplicate) {
-        logger.info('[Webhook] Duplicate email skipped', { messageId: processData.messageId });
-        return success(res, { message: 'Email already processed' }, 200);
-      }
-
-      logger.info('[Webhook] Email processed successfully', {
-        emailId: result.email?.id,
-        propertyId: result.property?.id,
-        taskId: result.task?.id,
-        senderType: result.senderType,
-      });
-
-      return success(res, result, 201);
+      // Respond immediately
+      return sendSuccess(res, { statusCode: 202, message: 'Email accepted for processing' });
     } catch (err) {
       logger.error('[Webhook] Failed to process Resend inbound', {
         error: err.message,
@@ -149,7 +175,7 @@ const webhookController = {
 
       // Return 200 to prevent Resend from retrying (we logged the error)
       // Don't expose internal error details to external callers
-      return error(res, 'Email processing failed', 200);
+      return sendError(res, { statusCode: 200, message: 'Email processing failed' });
     }
   },
 
@@ -222,10 +248,12 @@ const webhookController = {
    * GET /webhooks/health
    */
   async healthCheck(req, res) {
-    return success(res, {
-      status: 'ok',
-      service: 'webhooks',
-      timestamp: new Date().toISOString(),
+    return sendSuccess(res, {
+      data: {
+        status: 'ok',
+        service: 'webhooks',
+        timestamp: new Date().toISOString(),
+      },
     });
   },
 };
