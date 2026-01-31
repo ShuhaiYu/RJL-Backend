@@ -16,7 +16,7 @@ const cors = require('cors');
 const app = express();
 
 // Import routes
-const { authRoutes, apiRoutes, publicRoutes, webhookRoutes } = require('./routes');
+const { authRoutes, apiRoutes, publicRoutes, webhookRoutes, cronRoutes } = require('./routes');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middlewares/errorHandler');
@@ -105,6 +105,9 @@ app.use('/public', publicRoutes);
 // Webhook routes (no authentication, verified by signature)
 app.use('/webhooks', webhookRoutes);
 
+// Cron routes (for Vercel Cron jobs, verified by CRON_SECRET)
+app.use('/api/cron', cronRoutes);
+
 // ==================== ERROR HANDLING ====================
 
 // 404 handler
@@ -115,16 +118,22 @@ app.use(errorHandler);
 
 // ==================== BACKGROUND JOBS ====================
 
-// Only start background jobs if not in test environment
-if (process.env.NODE_ENV !== 'test') {
+// Only start node-cron jobs if NOT in Vercel (serverless) environment
+// In Vercel, use Vercel Cron via /api/cron/* endpoints instead
+const isVercel = process.env.VERCEL === '1';
+
+if (process.env.NODE_ENV !== 'test' && !isVercel) {
   // Import job modules
   const { setupCronJobs } = require('./jobs');
 
-  // Setup cron jobs
+  // Setup cron jobs (traditional server environment only)
   setupCronJobs();
-
-  logger.info('Email processing via Resend webhook at /webhooks/resend/inbound');
+  logger.info('[CRON] Using node-cron for scheduled jobs');
+} else if (isVercel) {
+  logger.info('[CRON] Running on Vercel - using Vercel Cron at /api/cron/*');
 }
+
+logger.info('Email processing via Resend webhook at /webhooks/resend/inbound');
 
 // ==================== SERVER STARTUP ====================
 
