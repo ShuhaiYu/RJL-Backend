@@ -290,33 +290,42 @@ const emailService = {
       }
     }
 
-    // Map AI task type to our task types
-    const taskType = this.mapTaskType(extractedInfo.taskType);
+    // Create tasks from email (可能多个，如 safety check = SMOKE_ALARM + GAS_&_ELECTRICITY)
+    const tasks = [];
+    const taskTypesToCreate = extractedInfo.taskTypes || [];
 
-    // Create task from email (only if we have an agency, since agencyId is required)
-    let task = null;
-    if (agency?.id) {
-      task = await taskRepository.create({
-        property_id: property.id,
-        agency_id: agency.id,
-        task_name: extractedInfo.summary || subject || 'New task from email',
-        task_description: textBody?.substring(0, 500),
-        email_id: email.id,
-        status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
-        type: taskType,
-      });
-    } else {
+    if (agency?.id && taskTypesToCreate.length > 0) {
+      for (const taskType of taskTypesToCreate) {
+        const mappedType = this.mapTaskType(taskType);
+        if (mappedType) {
+          const task = await taskRepository.create({
+            property_id: property.id,
+            agency_id: agency.id,
+            task_name: `${extractedInfo.summary || subject || 'New task from email'} - ${taskType}`,
+            task_description: textBody?.substring(0, 500),
+            email_id: email.id,
+            status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
+            type: mappedType,
+          });
+          tasks.push({ id: task.id, task_name: task.taskName, type: mappedType });
+        }
+      }
+    } else if (!agency?.id) {
       logger.warn('[Email] No agency available, task not created. Email saved for manual review.', {
         emailId: email.id,
         senderType,
+      });
+    } else if (taskTypesToCreate.length === 0) {
+      logger.info('[Email] No recognized task types, no tasks created.', {
+        emailId: email.id,
       });
     }
 
     logger.info('[Email] Successfully processed email with AI', {
       emailId: email.id,
       propertyId: property.id,
-      taskId: task?.id || null,
-      taskType,
+      taskCount: tasks.length,
+      taskTypes: taskTypesToCreate,
       urgency: extractedInfo.urgency,
       addressExtracted: !!extractedInfo.address,
       senderType,
@@ -329,17 +338,13 @@ const emailService = {
         address: property.address,
       },
       contacts: createdContacts.length,
-      task: task
-        ? {
-            id: task.id,
-            task_name: task.taskName,
-            type: taskType,
-          }
-        : null,
+      tasks: tasks,  // 返回任务数组
+      task: tasks.length > 0 ? tasks[0] : null,  // 兼容旧代码，返回第一个任务
       extracted: {
         urgency: extractedInfo.urgency,
         summary: extractedInfo.summary,
         addressFound: !!extractedInfo.address,
+        taskTypes: taskTypesToCreate,
       },
       senderType, // 'user', 'whitelist', 'unassigned', or 'api'
     };
@@ -433,11 +438,19 @@ const emailService = {
     }
 
     // Task creation
-    if (result.task) {
+    if (result.tasks && result.tasks.length > 0) {
+      for (const task of result.tasks) {
+        const taskType = task.type || 'General';
+        notes.push(`✓ Created task: ${task.task_name} (${taskType})`);
+      }
+    } else if (result.task) {
+      // 兼容旧格式
       const taskType = result.task.type || 'General';
       notes.push(`✓ Created task: ${result.task.task_name} (${taskType})`);
     } else if (result.noAgency) {
       notes.push(`⚠ Task not created: No agency determined`);
+    } else if (result.extracted?.taskTypes?.length === 0) {
+      notes.push(`ℹ No tasks created: Email type not recognized as SMOKE_ALARM or GAS_&_ELECTRICITY`);
     }
 
     // AI extracted info
@@ -489,7 +502,7 @@ const emailService = {
       extractedInfo = await geminiService.extractEmailInfo(subject, emailBody);
     } catch (err) {
       logger.warn('[EmailService] AI extraction failed, using defaults', { error: err.message });
-      extractedInfo = { address: null, contacts: [], taskType: null, summary: subject, urgency: 'normal' };
+      extractedInfo = { address: null, contacts: [], taskTypes: [], summary: subject, urgency: 'MEDIUM' };
     }
 
     // Format address if found
@@ -620,25 +633,32 @@ const emailService = {
       }
     }
 
-    // Map AI task type to our task types
-    const taskType = this.mapTaskType(extractedInfo.taskType);
-
-    // Create task from email (only if we have an agency)
-    let task = null;
+    // Create tasks from email (可能多个，如 safety check = SMOKE_ALARM + GAS_&_ELECTRICITY)
+    const tasks = [];
+    const taskTypesToCreate = extractedInfo.taskTypes || [];
     let noAgency = false;
-    if (agency?.id) {
-      task = await taskRepository.create({
-        property_id: property.id,
-        agency_id: agency.id,
-        task_name: extractedInfo.summary || subject || 'New task from email',
-        task_description: emailBody?.substring(0, 500),
-        email_id: id,
-        status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
-        type: taskType,
-      });
-    } else {
+
+    if (agency?.id && taskTypesToCreate.length > 0) {
+      for (const taskType of taskTypesToCreate) {
+        const mappedType = this.mapTaskType(taskType);
+        if (mappedType) {
+          const task = await taskRepository.create({
+            property_id: property.id,
+            agency_id: agency.id,
+            task_name: `${extractedInfo.summary || subject || 'New task from email'} - ${taskType}`,
+            task_description: emailBody?.substring(0, 500),
+            email_id: id,
+            status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
+            type: mappedType,
+          });
+          tasks.push({ id: task.id, task_name: task.taskName, type: mappedType });
+        }
+      }
+    } else if (!agency?.id) {
       noAgency = true;
       logger.warn('[EmailService] No agency available, task not created', { emailId: id });
+    } else if (taskTypesToCreate.length === 0) {
+      logger.info('[EmailService] No recognized task types, no tasks created.', { emailId: id });
     }
 
     // Build result for process note generation
@@ -647,12 +667,14 @@ const emailService = {
       agencyUser,
       property: { id: property.id, address: property.address },
       propertyExisted,
-      task: task ? { id: task.id, task_name: task.taskName, type: taskType } : null,
+      task: tasks.length > 0 ? tasks[0] : null,  // 兼容旧代码
+      tasks: tasks,  // 新增：所有任务
       noAgency,
       extracted: {
         urgency: extractedInfo.urgency,
         summary: extractedInfo.summary,
         addressFound: !!extractedInfo.address,
+        taskTypes: taskTypesToCreate,
       },
     };
 
@@ -669,7 +691,8 @@ const emailService = {
     logger.info('[EmailService] Successfully processed stored email', {
       emailId: id,
       propertyId: property.id,
-      taskId: task?.id || null,
+      taskCount: tasks.length,
+      taskTypes: taskTypesToCreate,
       senderType,
     });
 
