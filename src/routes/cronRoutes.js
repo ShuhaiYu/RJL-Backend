@@ -21,4 +21,8 @@ router.get('/daily-tasks', cronController.runDailyTasks);
 router.get('/task-reminders', cronController.runTaskReminders);
 router.get('/task-status-update', cronController.runTaskStatusUpdate);
 
+// Email processing - runs every 5 minutes
+// Processes unprocessed emails with AI (Step 2 of 2-step processing)
+router.get('/process-emails', cronController.runEmailProcessing);
+
 module.exports = router;

@@ -72,19 +72,21 @@ model Contact {
 }
 
 model Email {
-  id         Int       @id @default(autoincrement())
-  subject    String?
-  sender     String?
-  emailBody  String?   @map("email_body")
-  html       String?
-  propertyId Int       @map("property_id")
-  agencyId   Int?      @map("agency_id")
-  gmailMsgid String?   @unique @map("gmail_msgid") @db.VarChar(64)
-  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  id          Int       @id @default(autoincrement())
+  subject     String?
+  sender      String?
+  emailBody   String?   @map("email_body")
+  html        String?
+  propertyId  Int?      @map("property_id")
+  agencyId    Int?      @map("agency_id")
+  gmailMsgid  String?   @unique @map("gmail_msgid") @db.VarChar(64)
+  isProcessed Boolean   @default(false) @map("is_processed")
+  processNote String?   @map("process_note")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  property Property @relation(fields: [propertyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_property_email")
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_property_email")
   tasks    Task[]
 
   @@map("EMAIL")

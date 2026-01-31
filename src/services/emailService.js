@@ -371,6 +371,8 @@ const emailService = {
       property_id: email.propertyId,
       agency_id: email.agencyId,
       gmail_msgid: email.gmailMsgid,
+      is_processed: email.isProcessed,
+      process_note: email.processNote,
       created_at: email.createdAt,
       updated_at: email.updatedAt,
     };
@@ -380,17 +382,309 @@ const emailService = {
         id: email.property.id,
         address: email.property.address,
       };
+      formatted.property_address = email.property.address;
     }
 
-    if (email.tasks) {
+    if (email.tasks && email.tasks.length > 0) {
       formatted.tasks = email.tasks.map((t) => ({
         id: t.id,
         task_name: t.taskName,
         status: t.status,
+        type: t.type,
       }));
+      // For display convenience
+      formatted.task_id = email.tasks[0].id;
+      formatted.task_name = email.tasks[0].taskName;
+      formatted.task_type = email.tasks[0].type;
     }
 
     return formatted;
+  },
+
+  /**
+   * Generate process note from processing result
+   * @param {Object} result - Processing result
+   */
+  generateProcessNote(result) {
+    const notes = [];
+
+    // Sender identification
+    if (result.senderType === 'user') {
+      notes.push(`✓ Sender identified: System user (${result.agencyUser?.name || result.agencyUser?.email})`);
+    } else if (result.senderType === 'whitelist') {
+      notes.push(`✓ Sender identified: Whitelist user`);
+    } else if (result.senderType === 'unassigned') {
+      notes.push(`⚠ Sender not recognized: Assigned to system admin`);
+    } else if (result.senderType === 'api') {
+      notes.push(`✓ Manual processing via API`);
+    }
+
+    // Property identification
+    if (result.propertyExisted) {
+      notes.push(`✓ Linked to existing property: ${result.property?.address} (ID: ${result.property?.id})`);
+    } else if (result.property) {
+      if (result.property.address?.startsWith('[待补充地址]')) {
+        notes.push(`⚠ Address not extracted: Created placeholder property`);
+      } else {
+        notes.push(`✓ Created new property: ${result.property.address}`);
+      }
+    } else {
+      notes.push(`⚠ Could not create property`);
+    }
+
+    // Task creation
+    if (result.task) {
+      const taskType = result.task.type || 'General';
+      notes.push(`✓ Created task: ${result.task.task_name} (${taskType})`);
+    } else if (result.noAgency) {
+      notes.push(`⚠ Task not created: No agency determined`);
+    }
+
+    // AI extracted info
+    if (result.extracted?.summary) {
+      notes.push(`📋 AI Summary: ${result.extracted.summary}`);
+    }
+
+    return notes.join('\n');
+  },
+
+  /**
+   * Process a stored (unprocessed) email by ID
+   * Step 2 of 2-step processing: Full AI processing
+   * @param {number} emailId - Email ID to process
+   */
+  async processStoredEmailById(emailId) {
+    const email = await emailRepository.findById(emailId);
+    if (!email) {
+      throw new NotFoundError('Email');
+    }
+
+    if (email.isProcessed) {
+      return {
+        alreadyProcessed: true,
+        message: 'Email already processed',
+        email: this.formatEmail(email),
+      };
+    }
+
+    return this.processStoredEmail(email);
+  },
+
+  /**
+   * Process a stored email record with AI
+   * Step 2 of 2-step processing
+   * @param {Object} email - Email record from database
+   */
+  async processStoredEmail(email) {
+    const { id, subject, sender, emailBody, html } = email;
+
+    logger.info('[EmailService] Processing stored email', { emailId: id, subject, sender });
+
+    // Extract actual email address from sender
+    const senderEmail = this.extractEmailAddress(sender);
+
+    // Use Gemini AI to extract information
+    let extractedInfo = {};
+    try {
+      extractedInfo = await geminiService.extractEmailInfo(subject, emailBody);
+    } catch (err) {
+      logger.warn('[EmailService] AI extraction failed, using defaults', { error: err.message });
+      extractedInfo = { address: null, contacts: [], taskType: null, summary: subject, urgency: 'normal' };
+    }
+
+    // Format address if found
+    let formattedAddress = extractedInfo.address;
+    if (formattedAddress) {
+      try {
+        formattedAddress = await this.formatAddress(formattedAddress);
+      } catch (error) {
+        logger.warn('[EmailService] Failed to format address', { error: error.message });
+      }
+    }
+
+    // Find agency and responsible user based on sender email
+    let agency = null;
+    let agencyUser = null;
+    let senderType = null;
+
+    if (senderEmail) {
+      // Step 1: Check if sender is a registered system user
+      const senderUser = await userRepository.findByEmail(senderEmail);
+
+      if (senderUser && senderUser.isActive && senderUser.agencyId) {
+        agency = { id: senderUser.agencyId };
+        agencyUser = senderUser;
+        senderType = 'user';
+        logger.info('[EmailService] Sender is a registered user', {
+          senderEmail,
+          userId: senderUser.id,
+          agencyId: senderUser.agencyId
+        });
+      } else {
+        // Step 2: Check agency whitelist
+        agency = await agencyWhitelistRepository.findAgencyByEmail(senderEmail);
+
+        if (agency) {
+          const agencyUsers = await userRepository.findByAgencyIdWithPriority(agency.id);
+          if (agencyUsers.length > 0) {
+            agencyUser = agencyUsers[0];
+            senderType = 'whitelist';
+            logger.info('[EmailService] Sender found in whitelist', {
+              senderEmail,
+              agencyId: agency.id,
+              assignedUserId: agencyUser.id,
+            });
+          }
+        }
+      }
+    }
+
+    // Step 3: Fallback to system admin if no agency found
+    if (!agency || !agencyUser) {
+      logger.warn('[EmailService] Sender not recognized, using system admin fallback', { sender, senderEmail });
+
+      const { users: adminUsers } = await userRepository.findAll({
+        role: 'superuser',
+        isActive: true,
+        take: 1,
+      });
+
+      if (adminUsers.length === 0) {
+        const { users: fallbackUsers } = await userRepository.findAll({
+          role: 'admin',
+          isActive: true,
+          take: 1,
+        });
+        if (fallbackUsers.length > 0) {
+          agencyUser = fallbackUsers[0];
+        }
+      } else {
+        agencyUser = adminUsers[0];
+      }
+
+      if (agencyUser) {
+        agency = agencyUser.agencyId ? { id: agencyUser.agencyId } : null;
+        senderType = 'unassigned';
+        logger.info('[EmailService] Using system admin as fallback', {
+          adminUserId: agencyUser.id,
+          agencyId: agency?.id || null
+        });
+      } else {
+        // No admin found - mark as processed with error note
+        const errorNote = '❌ Processing failed: No system admin available';
+        await emailRepository.markAsProcessed(id, { processNote: errorNote });
+        throw new ValidationError('System configuration error: No admin user available to process emails.');
+      }
+    }
+
+    // Create or find property
+    let property = null;
+    let propertyExisted = false;
+
+    if (formattedAddress) {
+      property = await propertyRepository.findByAddressAndUser(formattedAddress, agencyUser.id);
+      if (property) {
+        propertyExisted = true;
+      } else {
+        property = await propertyRepository.create({
+          address: formattedAddress,
+          user_id: agencyUser.id,
+        });
+      }
+    } else {
+      // No address found - create property with placeholder
+      const placeholderAddress = `[待补充地址] ${uuidv4().slice(0, 8)} - ${subject || 'Email'} - ${new Date().toISOString().slice(0, 10)}`;
+      property = await propertyRepository.create({
+        address: placeholderAddress,
+        user_id: agencyUser.id,
+      });
+      logger.warn('[EmailService] No address extracted, created placeholder property', {
+        propertyId: property.id,
+        placeholderAddress,
+      });
+    }
+
+    // Create contacts if extracted
+    const createdContacts = [];
+    if (extractedInfo.contacts && extractedInfo.contacts.length > 0) {
+      for (const contact of extractedInfo.contacts) {
+        if (contact.phone || contact.email) {
+          const newContact = await contactRepository.create({
+            name: contact.name || 'Unknown',
+            phone: contact.phone,
+            email: contact.email,
+            property_id: property.id,
+          });
+          createdContacts.push(newContact);
+        }
+      }
+    }
+
+    // Map AI task type to our task types
+    const taskType = this.mapTaskType(extractedInfo.taskType);
+
+    // Create task from email (only if we have an agency)
+    let task = null;
+    let noAgency = false;
+    if (agency?.id) {
+      task = await taskRepository.create({
+        property_id: property.id,
+        agency_id: agency.id,
+        task_name: extractedInfo.summary || subject || 'New task from email',
+        task_description: emailBody?.substring(0, 500),
+        email_id: id,
+        status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
+        type: taskType,
+      });
+    } else {
+      noAgency = true;
+      logger.warn('[EmailService] No agency available, task not created', { emailId: id });
+    }
+
+    // Build result for process note generation
+    const result = {
+      senderType,
+      agencyUser,
+      property: { id: property.id, address: property.address },
+      propertyExisted,
+      task: task ? { id: task.id, task_name: task.taskName, type: taskType } : null,
+      noAgency,
+      extracted: {
+        urgency: extractedInfo.urgency,
+        summary: extractedInfo.summary,
+        addressFound: !!extractedInfo.address,
+      },
+    };
+
+    // Generate process note
+    const processNote = this.generateProcessNote(result);
+
+    // Mark email as processed
+    await emailRepository.markAsProcessed(id, {
+      propertyId: property.id,
+      agencyId: agency?.id || null,
+      processNote,
+    });
+
+    logger.info('[EmailService] Successfully processed stored email', {
+      emailId: id,
+      propertyId: property.id,
+      taskId: task?.id || null,
+      senderType,
+    });
+
+    // Fetch updated email for return
+    const updatedEmail = await emailRepository.findByIdWithRelations(id);
+
+    return {
+      email: this.formatEmail(updatedEmail),
+      property: result.property,
+      contacts: createdContacts.length,
+      task: result.task,
+      extracted: result.extracted,
+      senderType,
+      processNote,
+    };
   },
 };
 

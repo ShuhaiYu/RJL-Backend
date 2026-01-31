@@ -9,12 +9,12 @@ const { sendSuccess } = require('../lib/response');
 
 module.exports = {
   /**
-   * Process incoming email
+   * Process incoming email (legacy - for API submissions)
    * POST /api/emails/process
    */
   processEmail: async (req, res, next) => {
     try {
-      const result = await emailService.processEmail(req.body, req.user);
+      const result = await emailService.processEmailWithAI(req.body, req.user);
 
       if (result.duplicate) {
         return sendSuccess(res, {
@@ -25,6 +25,34 @@ module.exports = {
 
       sendSuccess(res, {
         statusCode: 201,
+        message: 'Email processed successfully',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Process a stored (unprocessed) email by ID
+   * POST /api/emails/:id/process
+   *
+   * Step 2 of 2-step processing - manual trigger from frontend
+   */
+  processStoredEmail: async (req, res, next) => {
+    try {
+      const emailId = parseInt(req.params.id, 10);
+      const result = await emailService.processStoredEmailById(emailId);
+
+      if (result.alreadyProcessed) {
+        return sendSuccess(res, {
+          message: result.message,
+          data: result.email,
+        });
+      }
+
+      sendSuccess(res, {
+        statusCode: 200,
         message: 'Email processed successfully',
         data: result,
       });

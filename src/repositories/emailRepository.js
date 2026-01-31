@@ -145,6 +145,59 @@ const emailRepository = {
     });
     return count > 0;
   },
+
+  /**
+   * Find unprocessed emails
+   * @param {number} limit - Maximum number of emails to return
+   */
+  async findUnprocessed(limit = 10) {
+    return prisma.email.findMany({
+      where: { isProcessed: false },
+      take: limit,
+      orderBy: { createdAt: 'asc' },
+    });
+  },
+
+  /**
+   * Mark email as processed with optional updates
+   * @param {number} id - Email ID
+   * @param {Object} options - Optional updates
+   * @param {number} options.propertyId - Property ID to link
+   * @param {number} options.agencyId - Agency ID to link
+   * @param {string} options.processNote - Processing result note
+   */
+  async markAsProcessed(id, { propertyId = null, agencyId = null, processNote = null } = {}) {
+    const updateData = {
+      isProcessed: true,
+      updatedAt: new Date(),
+    };
+    if (propertyId !== null) updateData.propertyId = propertyId;
+    if (agencyId !== null) updateData.agencyId = agencyId;
+    if (processNote !== null) updateData.processNote = processNote;
+
+    return prisma.email.update({
+      where: { id },
+      data: updateData,
+    });
+  },
+
+  /**
+   * Create a new email (raw, unprocessed)
+   * For webhook - saves email without processing
+   */
+  async createRaw(data) {
+    return prisma.email.create({
+      data: {
+        subject: data.subject,
+        sender: data.sender,
+        emailBody: data.email_body,
+        html: data.html,
+        gmailMsgid: data.gmail_msgid,
+        isProcessed: false,
+        // propertyId and agencyId are null initially
+      },
+    });
+  },
 };
 
 module.exports = emailRepository;

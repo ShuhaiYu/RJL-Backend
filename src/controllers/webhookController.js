@@ -2,11 +2,13 @@
  * Webhook Controller
  *
  * Handles incoming webhooks from external services (Resend).
+ * Step 1 of 2-step email processing: Save raw email only (< 3 seconds)
+ * Processing happens via cron job or manual trigger
  */
 
 const crypto = require('crypto');
 const axios = require('axios');
-const emailService = require('../services/emailService');
+const emailRepository = require('../repositories/emailRepository');
 const logger = require('../lib/logger');
 const { sendSuccess, sendError } = require('../lib/response');
 
@@ -37,58 +39,6 @@ async function fetchEmailContent(emailId) {
     }
   );
   return response.data;
-}
-
-/**
- * Process email in background (fire and forget)
- * This allows us to respond to webhook quickly while processing continues
- */
-async function processEmailInBackground(emailId, fullEmail, recipients) {
-  try {
-    // Extract email data from full email content
-    const processData = {
-      subject: fullEmail.subject || '',
-      sender: fullEmail.from || '',
-      textBody: fullEmail.text || '',
-      html: fullEmail.html || '',
-      recipient: recipients[0] || '',
-      messageId: emailId,
-    };
-
-    logger.info('[Webhook] Processing inbound email in background', {
-      sender: processData.sender,
-      recipient: processData.recipient,
-      subject: processData.subject,
-      bodyLength: processData.textBody?.length || 0,
-    });
-
-    // Process with system user context
-    const systemUser = {
-      id: 0,
-      role: 'system',
-      agency_id: null,
-    };
-
-    const result = await emailService.processEmailWithAI(processData, systemUser);
-
-    if (result.duplicate) {
-      logger.info('[Webhook] Duplicate email skipped', { messageId: processData.messageId });
-      return;
-    }
-
-    logger.info('[Webhook] Email processed successfully', {
-      emailId: result.email?.id,
-      propertyId: result.property?.id,
-      taskId: result.task?.id,
-      senderType: result.senderType,
-    });
-  } catch (err) {
-    logger.error('[Webhook] Background email processing failed', {
-      emailId,
-      error: err.message,
-      stack: err.stack,
-    });
-  }
 }
 
 const webhookController = {
@@ -157,18 +107,41 @@ const webhookController = {
         return sendSuccess(res, { statusCode: 200, message: 'Domain not handled' });
       }
 
-      // Respond immediately to webhook, then process in background
-      // This prevents Vercel timeout (10s limit on free tier)
-      // Note: On Vercel, background processing may be cut off after response is sent
-      // For more reliable processing, consider using a queue service like Upstash QStash
+      // Check for duplicate using messageId
+      const exists = await emailRepository.existsByGmailMsgId(emailId);
+      if (exists) {
+        logger.info('[Webhook] Duplicate email skipped', { messageId: emailId });
+        return sendSuccess(res, { statusCode: 200, message: 'Email already processed' });
+      }
 
-      // Start background processing (don't await)
-      processEmailInBackground(emailId, fullEmail, recipients).catch(err => {
-        logger.error('[Webhook] Background processing error', { error: err.message });
+      // Step 1: Save raw email data only (no AI processing)
+      // Processing will happen via cron job or manual trigger
+      const rawEmailData = {
+        subject: fullEmail.subject || '',
+        sender: fullEmail.from || '',
+        email_body: fullEmail.text || '',
+        html: fullEmail.html || '',
+        gmail_msgid: emailId,
+      };
+
+      logger.info('[Webhook] Saving raw email', {
+        sender: rawEmailData.sender,
+        subject: rawEmailData.subject,
+        bodyLength: rawEmailData.email_body?.length || 0,
       });
 
-      // Respond immediately
-      return sendSuccess(res, { statusCode: 202, message: 'Email accepted for processing' });
+      const savedEmail = await emailRepository.createRaw(rawEmailData);
+
+      logger.info('[Webhook] Email saved successfully (pending processing)', {
+        emailId: savedEmail.id,
+        messageId: emailId,
+      });
+
+      return sendSuccess(res, {
+        statusCode: 201,
+        message: 'Email saved, pending processing',
+        data: { id: savedEmail.id, isProcessed: false },
+      });
     } catch (err) {
       logger.error('[Webhook] Failed to process Resend inbound', {
         error: err.message,

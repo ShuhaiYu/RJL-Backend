@@ -6,6 +6,7 @@
 
 const { sendReminders } = require('../jobs/taskReminder');
 const { updateExpiredTasks } = require('../jobs/taskStatusUpdater');
+const { processUnprocessedEmails } = require('../jobs/emailProcessor');
 const logger = require('../lib/logger');
 
 /**
@@ -123,8 +124,43 @@ async function runTaskStatusUpdate(req, res) {
   }
 }
 
+/**
+ * Run email processing job
+ * Schedule: */5 * * * * (every 5 minutes)
+ *
+ * GET /api/cron/process-emails
+ */
+async function runEmailProcessing(req, res) {
+  const startTime = Date.now();
+  logger.info('[CRON] Running email processing...');
+
+  try {
+    const result = await processUnprocessedEmails(5); // Process up to 5 emails per run
+    const duration = Date.now() - startTime;
+
+    logger.info(`[CRON] Email processing completed in ${duration}ms`, result);
+
+    res.json({
+      success: true,
+      message: 'Email processing completed',
+      duration: `${duration}ms`,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error('[CRON] Email processing failed', { error: error.message });
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
+
 module.exports = {
   runDailyTasks,
   runTaskReminders,
   runTaskStatusUpdate,
+  runEmailProcessing,
 };

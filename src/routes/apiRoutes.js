@@ -420,6 +420,14 @@ router.get('/emails/:id',
   emailController.getEmailDetail
 );
 
+// Manual process endpoint for stored emails (Step 2 of 2-step processing)
+router.post('/emails/:id/process',
+  authMiddleware.authenticateToken,
+  authMiddleware.requirePermission('update', 'email'),
+  validate(emailIdParamSchema, 'params'),
+  emailController.processStoredEmail
+);
+
 // ==================== VEU PROJECT ROUTES ====================
 router.get('/veu-projects',
   authMiddleware.authenticateToken,
