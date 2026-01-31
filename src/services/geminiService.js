@@ -99,7 +99,7 @@ const geminiService = {
     }
 
     try {
-      const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
+      const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
 
       // Sanitize user content to prevent prompt injection
       const sanitizedSubject = sanitizeForPrompt(subject, 500);
