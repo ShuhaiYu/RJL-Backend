@@ -261,6 +261,23 @@ const agencyService = {
    * Format agency for API response
    */
   formatAgency(agency) {
+    // Collect all properties from all users
+    const allProperties = [];
+    agency.users?.forEach((u) => {
+      u.properties?.forEach((p) => {
+        allProperties.push({
+          id: p.id,
+          address: p.address,
+          region: p.region,
+          user_id: p.userId,
+          user_name: u.name,
+          is_active: p.isActive,
+          created_at: p.createdAt,
+          updated_at: p.updatedAt,
+        });
+      });
+    });
+
     return {
       id: agency.id,
       agency_name: agency.agencyName,
@@ -280,6 +297,20 @@ const agencyService = {
       whitelist: agency.whitelist?.map((w) => ({
         id: w.id,
         email_address: w.emailAddress,
+      })),
+      properties: allProperties,
+      tasks: agency.tasks?.map((t) => ({
+        id: t.id,
+        task_name: t.taskName,
+        task_description: t.taskDescription,
+        type: t.type,
+        status: t.status,
+        due_date: t.dueDate,
+        inspection_date: t.inspectionDate,
+        property_id: t.propertyId,
+        property_address: t.property?.address,
+        created_at: t.createdAt,
+        updated_at: t.updatedAt,
       })),
     };
   },

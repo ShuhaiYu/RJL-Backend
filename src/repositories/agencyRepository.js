@@ -25,8 +25,20 @@ const agencyRepository = {
       include: {
         users: {
           where: { isActive: true },
+          include: {
+            properties: {
+              where: { isActive: true },
+            },
+          },
         },
         whitelist: true,
+        tasks: {
+          where: { isActive: true },
+          include: {
+            property: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
   },

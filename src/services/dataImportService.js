@@ -398,7 +398,6 @@ async function importCsv(csvBuffer, user) {
           status: taskStatus,
           repeatFrequency: 'none',
         });
-        results.created++;
       }
 
       // Mark job number as used (prevent duplicates within same import)
@@ -417,84 +416,118 @@ async function importCsv(csvBuffer, user) {
     tasksToCreate: tasksToCreate.length,
   });
 
-  // ========== PHASE 3: Execute batch inserts in transaction ==========
+  // ========== PHASE 3: Create properties first (no transaction needed) ==========
 
-  if (propertiesToCreate.length > 0 || tasksToCreate.length > 0) {
-    // Use longer timeout for large imports (default is 5s, we use 30s)
-    await prisma.$transaction(
-      async (tx) => {
-        // 3a. Create all properties (need individual creates to get IDs back)
-        let createdProperties = [];
-        if (propertiesToCreate.length > 0) {
-          // Create in batches of 50 to avoid overwhelming the DB
-          const BATCH_SIZE = 50;
-          for (let i = 0; i < propertiesToCreate.length; i += BATCH_SIZE) {
-            const batch = propertiesToCreate.slice(i, i + BATCH_SIZE);
-            const created = await Promise.all(
-              batch.map(prop => tx.property.create({ data: prop }))
-            );
-            createdProperties.push(...created);
-          }
-          logger.info(`Created ${createdProperties.length} properties`);
-        }
+  // Map to lookup created property IDs by address+userId key
+  const createdPropertyLookup = new Map();
 
-      // 3b. Resolve property references and create contacts
-      const contactData = [];
-      const contactKeys = new Set(); // Prevent duplicate contacts in same batch
+  if (propertiesToCreate.length > 0) {
+    // Use PostgreSQL UNNEST for true bulk insert (single query, returns IDs)
+    const addresses = propertiesToCreate.map(p => p.address);
+    const userIds = propertiesToCreate.map(p => p.userId);
+    const regions = propertiesToCreate.map(p => p.region);
 
-      for (const contact of contactsToCreate) {
-        let propertyId;
-        if (contact.propertyRef.type === 'existing') {
-          propertyId = contact.propertyRef.property.id;
-        } else {
-          propertyId = createdProperties[contact.propertyRef.index].id;
-        }
+    try {
+      const createdProperties = await prisma.$queryRaw`
+        INSERT INTO "Property" ("address", "userId", "region")
+        SELECT * FROM UNNEST(
+          ${addresses}::text[],
+          ${userIds}::integer[],
+          ${regions}::text[]
+        )
+        RETURNING "id", "address", "userId"
+      `;
 
-        const contactKey = `${propertyId}|${contact.name}`;
-        if (!contactMap.has(contactKey) && !contactKeys.has(contactKey)) {
-          contactData.push({
-            name: contact.name,
-            phone: contact.phone,
-            propertyId,
-          });
-          contactKeys.add(contactKey);
-        }
+      createdProperties.forEach(prop => {
+        // Convert BigInt to Number for consistent key matching
+        const userId = Number(prop.userId);
+        createdPropertyLookup.set(`${prop.address}|${userId}`, Number(prop.id));
+      });
+      logger.info(`Created ${createdProperties.length} properties via bulk insert`);
+    } catch (bulkError) {
+      // Fallback to batched creates if bulk insert fails
+      logger.warn('Bulk insert failed, falling back to batched creates', { error: bulkError.message });
+
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < propertiesToCreate.length; i += BATCH_SIZE) {
+        const batch = propertiesToCreate.slice(i, i + BATCH_SIZE);
+        const created = await Promise.all(
+          batch.map(prop => prisma.property.create({ data: prop }))
+        );
+        created.forEach(prop => {
+          // Prisma returns Numbers for non-raw queries, but be consistent
+          createdPropertyLookup.set(`${prop.address}|${prop.userId}`, prop.id);
+        });
       }
+      logger.info(`Created ${createdPropertyLookup.size} properties via fallback`);
+    }
+  }
 
+  // ========== PHASE 4: Create contacts and tasks in transaction ==========
+
+  if (contactsToCreate.length > 0 || tasksToCreate.length > 0) {
+    // Helper to resolve property ID from reference
+    const resolvePropertyId = (propertyRef) => {
+      if (propertyRef.type === 'existing') {
+        return propertyRef.property.id;
+      } else {
+        // Look up by the original address+userId from propertiesToCreate
+        const originalProp = propertiesToCreate[propertyRef.index];
+        const key = `${originalProp.address}|${originalProp.userId}`;
+        return createdPropertyLookup.get(key);
+      }
+    };
+
+    // Resolve property references and prepare contact data
+    const contactData = [];
+    const contactKeys = new Set();
+
+    for (const contact of contactsToCreate) {
+      const propertyId = resolvePropertyId(contact.propertyRef);
+      if (!propertyId) continue;
+
+      const contactKey = `${propertyId}|${contact.name}`;
+      if (!contactMap.has(contactKey) && !contactKeys.has(contactKey)) {
+        contactData.push({
+          name: contact.name,
+          phone: contact.phone,
+          propertyId,
+        });
+        contactKeys.add(contactKey);
+      }
+    }
+
+    // Prepare task data
+    const taskData = tasksToCreate.map(task => {
+      const propertyId = resolvePropertyId(task.propertyRef);
+      return {
+        propertyId,
+        agencyId: task.agencyId,
+        taskName: task.taskName,
+        taskDescription: task.taskDescription,
+        dueDate: task.dueDate,
+        inspectionDate: task.inspectionDate,
+        type: task.type,
+        status: task.status,
+        repeatFrequency: task.repeatFrequency,
+      };
+    }).filter(t => t.propertyId); // Filter out any with missing propertyId
+
+    // Create contacts and tasks in a quick transaction
+    await prisma.$transaction(async (tx) => {
       if (contactData.length > 0) {
         await tx.contact.createMany({ data: contactData });
         logger.info(`Created ${contactData.length} contacts`);
       }
 
-      // 3c. Create all tasks
-      const taskData = tasksToCreate.map(task => {
-        let propertyId;
-        if (task.propertyRef.type === 'existing') {
-          propertyId = task.propertyRef.property.id;
-        } else {
-          propertyId = createdProperties[task.propertyRef.index].id;
-        }
-
-        return {
-          propertyId,
-          agencyId: task.agencyId,
-          taskName: task.taskName,
-          taskDescription: task.taskDescription,
-          dueDate: task.dueDate,
-          inspectionDate: task.inspectionDate,
-          type: task.type,
-          status: task.status,
-          repeatFrequency: task.repeatFrequency,
-        };
-      });
-
       if (taskData.length > 0) {
         await tx.task.createMany({ data: taskData });
         logger.info(`Created ${taskData.length} tasks`);
       }
-    },
-      { timeout: 30000 } // 30 second timeout for large imports
-    );
+
+      // Update created count after successful insertion
+      results.created = taskData.length;
+    }, { timeout: 15000 });
   }
 
   logger.info('Import completed', {

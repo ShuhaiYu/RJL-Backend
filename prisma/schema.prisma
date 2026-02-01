@@ -36,6 +36,7 @@ model Agency {
   // Relations
   whitelist AgencyWhitelist[]
   users     User[]
+  tasks     Task[]
 
   @@map("AGENCY")
 }
@@ -157,6 +158,7 @@ model Task {
   // Relations
   property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_property")
   email              Email?              @relation(fields: [emailId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_email")
+  agency             Agency              @relation(fields: [agencyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_agency")
   files              TaskFile[]
   inspectionBookings InspectionBooking[]
 
