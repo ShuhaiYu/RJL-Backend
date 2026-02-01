@@ -7,10 +7,9 @@
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
 const userRepository = require('../repositories/userRepository');
 const permissionRepository = require('../repositories/permissionRepository');
-const systemSettingsRepository = require('../repositories/systemSettingsRepository');
+const resendEmailService = require('./resendEmailService');
 const { UnauthorizedError, NotFoundError, ValidationError } = require('../lib/errors');
 
 // Validate required environment variables
@@ -163,23 +162,8 @@ const authService = {
     // Send plain token in URL (user gets this, we store the hash)
     const resetUrl = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
 
-    // Get email settings
-    const emailSettings = await systemSettingsRepository.getEmailSettings();
-    if (!emailSettings || !emailSettings.user) {
-      throw new Error('Email settings not configured');
-    }
-
-    // Send email
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: emailSettings.user,
-        pass: emailSettings.password,
-      },
-    });
-
-    await transporter.sendMail({
-      from: emailSettings.user,
+    // Send email via Resend
+    await resendEmailService.sendEmail({
       to: email,
       subject: 'Password Reset Request',
       html: `

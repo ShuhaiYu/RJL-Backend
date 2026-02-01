@@ -4,54 +4,16 @@
  * Handles sending booking invitation emails.
  */
 
-const nodemailer = require('nodemailer');
 const prisma = require('../config/prisma');
 const inspectionNotificationRepository = require('../repositories/inspectionNotificationRepository');
 const inspectionScheduleRepository = require('../repositories/inspectionScheduleRepository');
 const propertyRepository = require('../repositories/propertyRepository');
 const contactRepository = require('../repositories/contactRepository');
 const userRepository = require('../repositories/userRepository');
-const systemSettingsRepository = require('../repositories/systemSettingsRepository');
+const resendEmailService = require('./resendEmailService');
 const { generateBookingToken, getTokenExpiryDate } = require('../lib/tokenGenerator');
 const { NotFoundError, ValidationError } = require('../lib/errors');
 const logger = require('../lib/logger');
-
-// Transporter cache for connection reuse
-let cachedTransporter = null;
-let transporterSettingsHash = null;
-
-/**
- * Get or create a cached SMTP transporter with connection pooling
- */
-function getTransporter(emailSettings) {
-  const settingsHash = `${emailSettings.host}:${emailSettings.user}`;
-
-  // Reuse existing transporter if settings haven't changed
-  if (cachedTransporter && transporterSettingsHash === settingsHash) {
-    return cachedTransporter;
-  }
-
-  // Close existing transporter if it exists
-  if (cachedTransporter) {
-    cachedTransporter.close();
-  }
-
-  cachedTransporter = nodemailer.createTransport({
-    host: emailSettings.host || 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: {
-      user: emailSettings.user,
-      pass: emailSettings.password,
-    },
-    pool: true, // Enable connection pooling
-    maxConnections: 5, // Max concurrent connections
-    maxMessages: 100, // Max messages per connection
-  });
-
-  transporterSettingsHash = settingsHash;
-  return cachedTransporter;
-}
 
 /**
  * Send emails in batches with controlled concurrency
@@ -90,15 +52,6 @@ const inspectionNotificationService = {
     if (!schedule) {
       throw new NotFoundError('Schedule not found');
     }
-
-    // Get email settings ONCE at the beginning
-    const emailSettings = await systemSettingsRepository.getEmailSettings();
-    if (!emailSettings || !emailSettings.user) {
-      throw new Error('Email settings not configured');
-    }
-
-    // Get cached transporter with connection pooling
-    const transporter = getTransporter(emailSettings);
 
     const results = {
       success: [],
@@ -206,9 +159,7 @@ const inspectionNotificationService = {
               task.property,
               task.schedule,
               task.token,
-              task.inspectionTypes,
-              transporter,
-              emailSettings
+              task.inspectionTypes
             );
 
             if (sent) {
@@ -279,15 +230,6 @@ const inspectionNotificationService = {
     if (!schedule) {
       throw new NotFoundError('Schedule not found');
     }
-
-    // Get email settings ONCE at the beginning
-    const emailSettings = await systemSettingsRepository.getEmailSettings();
-    if (!emailSettings || !emailSettings.user) {
-      throw new Error('Email settings not configured');
-    }
-
-    // Get cached transporter with connection pooling
-    const transporter = getTransporter(emailSettings);
 
     const results = {
       success: [],
@@ -424,9 +366,7 @@ const inspectionNotificationService = {
               task.property,
               task.schedule,
               task.token,
-              task.inspectionTypes,
-              transporter,
-              emailSettings
+              task.inspectionTypes
             );
 
             if (sent) {
@@ -496,24 +436,14 @@ const inspectionNotificationService = {
    * @param {Object} schedule - Schedule info
    * @param {string} token - Booking token
    * @param {Array} inspectionTypes - Types of inspections
-   * @param {Object} existingTransporter - Optional: reuse existing transporter
-   * @param {Object} existingEmailSettings - Optional: reuse existing email settings
    */
   async sendBookingInvitation(
     contact,
     property,
     schedule,
     token,
-    inspectionTypes = [],
-    existingTransporter = null,
-    existingEmailSettings = null
+    inspectionTypes = []
   ) {
-    // Use provided settings or fetch new ones
-    const emailSettings = existingEmailSettings || await systemSettingsRepository.getEmailSettings();
-    if (!emailSettings || !emailSettings.user) {
-      throw new Error('Email settings not configured');
-    }
-
     const bookingLink = `${FRONTEND_URL}/book/${token}`;
     const scheduleDate = new Date(schedule.scheduleDate).toLocaleDateString('en-AU', {
       weekday: 'long',
@@ -522,18 +452,13 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    // Use provided transporter or create/get cached one
-    const transporter = existingTransporter || getTransporter(emailSettings);
-
-    const mailOptions = {
-      from: `"Safety Check Inspection" <${emailSettings.user}>`,
-      to: contact.email,
-      subject: `Safety Check Inspection - ${property.address}`,
-      html: this.generateEmailTemplate(contact, property, schedule, scheduleDate, bookingLink, inspectionTypes),
-    };
-
     try {
-      await transporter.sendMail(mailOptions);
+      await resendEmailService.sendEmail({
+        from: 'Safety Check Inspection <noreply@rjlagroup.com.au>',
+        to: contact.email,
+        subject: `Safety Check Inspection - ${property.address}`,
+        html: this.generateEmailTemplate(contact, property, schedule, scheduleDate, bookingLink, inspectionTypes),
+      });
       return true;
     } catch (error) {
       logger.error('Failed to send email', { error: error.message });
@@ -545,11 +470,6 @@ const inspectionNotificationService = {
    * Send confirmation email for a booking (to single recipient)
    */
   async sendConfirmationEmail(booking) {
-    const emailSettings = await systemSettingsRepository.getEmailSettings();
-    if (!emailSettings || !emailSettings.user) {
-      throw new Error('Email settings not configured');
-    }
-
     if (!booking.contactEmail) {
       logger.warn('No contact email for booking confirmation', { bookingId: booking.id });
       return false;
@@ -562,18 +482,13 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    // Use cached transporter with connection pooling
-    const transporter = getTransporter(emailSettings);
-
-    const mailOptions = {
-      from: `"Property Inspection" <${emailSettings.user}>`,
-      to: booking.contactEmail,
-      subject: `Booking Confirmed - ${booking.property.address}`,
-      html: this.generateConfirmationTemplate(booking, scheduleDate),
-    };
-
     try {
-      await transporter.sendMail(mailOptions);
+      await resendEmailService.sendEmail({
+        from: 'Property Inspection <noreply@rjlagroup.com.au>',
+        to: booking.contactEmail,
+        subject: `Booking Confirmed - ${booking.property.address}`,
+        html: this.generateConfirmationTemplate(booking, scheduleDate),
+      });
       logger.info('Confirmation email sent', { bookingId: booking.id, email: booking.contactEmail });
       return true;
     } catch (error) {
@@ -588,11 +503,6 @@ const inspectionNotificationService = {
    * Optimized for parallel sending
    */
   async sendConfirmationToAllRecipients(booking) {
-    const emailSettings = await systemSettingsRepository.getEmailSettings();
-    if (!emailSettings || !emailSettings.user) {
-      throw new Error('Email settings not configured');
-    }
-
     // Get all recipients who received notifications for this property
     const recipients = await inspectionNotificationRepository.findRecipientsByPropertyId(
       booking.propertyId
@@ -610,9 +520,6 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    // Use cached transporter with connection pooling
-    const transporter = getTransporter(emailSettings);
-
     let sent = 0;
     let failed = 0;
 
@@ -620,14 +527,12 @@ const inspectionNotificationService = {
     const sendResults = await sendInBatches(
       recipients.map((recipient) => async () => {
         const recipientName = recipient.contact?.name || recipient.user?.name || 'Recipient';
-        const mailOptions = {
-          from: `"Property Inspection" <${emailSettings.user}>`,
+        await resendEmailService.sendEmail({
+          from: 'Property Inspection <noreply@rjlagroup.com.au>',
           to: recipient.recipientEmail,
           subject: `Booking Confirmed - ${booking.property.address}`,
           html: this.generateConfirmationTemplateWithBooker(booking, scheduleDate, recipientName),
-        };
-
-        await transporter.sendMail(mailOptions);
+        });
         logger.info('Confirmation email sent to recipient', {
           bookingId: booking.id,
           email: recipient.recipientEmail,
@@ -663,11 +568,6 @@ const inspectionNotificationService = {
    * Send rejection email for a booking
    */
   async sendRejectionEmail(booking) {
-    const emailSettings = await systemSettingsRepository.getEmailSettings();
-    if (!emailSettings || !emailSettings.user) {
-      throw new Error('Email settings not configured');
-    }
-
     if (!booking.contactEmail) {
       logger.warn('No contact email for booking rejection', { bookingId: booking.id });
       return false;
@@ -680,18 +580,13 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    // Use cached transporter with connection pooling
-    const transporter = getTransporter(emailSettings);
-
-    const mailOptions = {
-      from: `"Property Inspection" <${emailSettings.user}>`,
-      to: booking.contactEmail,
-      subject: `Booking Update - ${booking.property.address}`,
-      html: this.generateRejectionTemplate(booking, scheduleDate),
-    };
-
     try {
-      await transporter.sendMail(mailOptions);
+      await resendEmailService.sendEmail({
+        from: 'Property Inspection <noreply@rjlagroup.com.au>',
+        to: booking.contactEmail,
+        subject: `Booking Update - ${booking.property.address}`,
+        html: this.generateRejectionTemplate(booking, scheduleDate),
+      });
       logger.info('Rejection email sent', { bookingId: booking.id, email: booking.contactEmail });
       return true;
     } catch (error) {
@@ -704,11 +599,6 @@ const inspectionNotificationService = {
    * Send reschedule notification email for a booking
    */
   async sendRescheduleEmail(booking, oldSlot) {
-    const emailSettings = await systemSettingsRepository.getEmailSettings();
-    if (!emailSettings || !emailSettings.user) {
-      throw new Error('Email settings not configured');
-    }
-
     if (!booking.contactEmail) {
       logger.warn('No contact email for booking reschedule', { bookingId: booking.id });
       return false;
@@ -721,18 +611,13 @@ const inspectionNotificationService = {
       day: 'numeric',
     });
 
-    // Use cached transporter with connection pooling
-    const transporter = getTransporter(emailSettings);
-
-    const mailOptions = {
-      from: `"Property Inspection" <${emailSettings.user}>`,
-      to: booking.contactEmail,
-      subject: `Booking Rescheduled - ${booking.property.address}`,
-      html: this.generateRescheduleTemplate(booking, scheduleDate, oldSlot),
-    };
-
     try {
-      await transporter.sendMail(mailOptions);
+      await resendEmailService.sendEmail({
+        from: 'Property Inspection <noreply@rjlagroup.com.au>',
+        to: booking.contactEmail,
+        subject: `Booking Rescheduled - ${booking.property.address}`,
+        html: this.generateRescheduleTemplate(booking, scheduleDate, oldSlot),
+      });
       logger.info('Reschedule email sent', { bookingId: booking.id, email: booking.contactEmail });
       return true;
     } catch (error) {

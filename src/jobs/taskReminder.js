@@ -4,10 +4,9 @@
  * Sends email reminders for tasks that are due today or 60 days ago.
  */
 
-const nodemailer = require('nodemailer');
 const dayjs = require('dayjs');
 const taskRepository = require('../repositories/taskRepository');
-const systemSettingsRepository = require('../repositories/systemSettingsRepository');
+const resendEmailService = require('../services/resendEmailService');
 const logger = require('../lib/logger');
 
 /**
@@ -17,30 +16,6 @@ async function sendReminders() {
   logger.info('[REMINDER] Starting task reminder job...');
 
   try {
-    // Get system settings for email configuration
-    const settings = await systemSettingsRepository.get();
-    if (!settings) {
-      logger.warn('[REMINDER] No system settings found, cannot send reminders');
-      return;
-    }
-
-    const { emailUser, emailPassword, emailHost } = settings;
-    if (!emailUser || !emailPassword) {
-      logger.warn('[REMINDER] Email config not found, skipping reminders');
-      return;
-    }
-
-    // Create nodemailer transporter
-    const transporter = nodemailer.createTransport({
-      host: emailHost,
-      port: 465,
-      secure: true,
-      auth: {
-        user: emailUser,
-        pass: emailPassword,
-      },
-    });
-
     // Find tasks to remind
     const tasks = await taskRepository.findTasksForReminder();
     if (tasks.length === 0) {
@@ -81,8 +56,8 @@ async function sendReminders() {
         'Best regards,\nRJL System';
 
       try {
-        await transporter.sendMail({
-          from: `"Task Reminder" <${emailUser}>`,
+        await resendEmailService.sendEmail({
+          from: 'Task Reminder <noreply@rjlagroup.com.au>',
           to: userEmail,
           subject,
           text: textBody,
