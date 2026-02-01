@@ -11,30 +11,19 @@ const logger = require('../lib/logger');
 const { AppError } = require('../lib/errors');
 
 /**
- * Check if description indicates a "Safety Check" which requires both Gas and Alarm tasks
+ * Detect task types from description
  * @param {string} description - Description from CSV
- * @returns {boolean} True if this is a safety check requiring both task types
+ * @returns {Object} { hasGasElec, hasSmokeAlarm, hasSafetyCheck }
  */
-function isSafetyCheck(description) {
-  if (!description) return false;
-  return description.toLowerCase().includes('safety check');
-}
+function detectTaskTypes(description) {
+  if (!description) return { hasGasElec: false, hasSmokeAlarm: false, hasSafetyCheck: false };
 
-/**
- * Map Job Type from CSV to task type
- * Standardizes various CSV job type formats to system constants
- */
-function mapJobType(jobType) {
-  if (!jobType) return 'SMOKE_ALARM';
-  const lower = jobType.toLowerCase();
-
-  // Gas & Electricity: gas, electric, electricity, power, etc.
-  if (lower.includes('gas') || lower.includes('electric') || lower.includes('power')) {
-    return 'GAS_&_ELECTRICITY';
-  }
-
-  // Default Smoke Alarm: smoke, alarm, safety check, etc.
-  return 'SMOKE_ALARM';
+  const lower = description.toLowerCase();
+  return {
+    hasGasElec: lower.includes('gas') || lower.includes('electric'),
+    hasSmokeAlarm: lower.includes('smoke') || lower.includes('alarm'),
+    hasSafetyCheck: lower.includes('safety check'),
+  };
 }
 
 /**
@@ -49,6 +38,28 @@ function mapRegion(regionStr) {
   if (upper.includes('NORTH')) return 'NORTH';
   if (upper.includes('SOUTH')) return 'SOUTH';
   if (upper.includes('CENTRAL')) return 'CENTRAL';
+
+  return null;
+}
+
+/**
+ * Parse Schedule field to extract inspection datetime
+ * Format: "Ray - 2025-12-18 18:16" or "Ray - 2025-11-07 12:00 to 2025-11-07 16:00"
+ * @param {string} scheduleStr - Schedule string from CSV
+ * @returns {Date|null} Parsed inspection date or null
+ */
+function parseSchedule(scheduleStr) {
+  if (!scheduleStr) return null;
+
+  // Match YYYY-MM-DD HH:MM pattern (first occurrence)
+  const match = scheduleStr.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+  if (match) {
+    const dateTimeStr = `${match[1]}T${match[2]}:00`;
+    const date = new Date(dateTimeStr);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+  }
 
   return null;
 }
@@ -165,6 +176,20 @@ async function importCsv(csvBuffer, user) {
       const contactPhone = row['Job Contact Phone'];
       const contactMobile = row['Job Contact Mobile'];
       const region = row['Job Region'];
+      const status = row['Status'];
+      const schedule = row['Schedule'];
+
+      // Parse inspection date from Schedule and determine task status
+      const inspectionDate = parseSchedule(schedule);
+      const isCompleted = status?.toLowerCase() === 'complete';
+      const taskStatus = isCompleted ? 'COMPLETED' : 'unknown';
+
+      // Skip if status is Complete but no valid inspection date
+      if (isCompleted && !inspectionDate) {
+        results.errors.push(`Row ${rowNum}: Status is Complete but Schedule is missing or invalid (skipped)`);
+        results.skipped++;
+        continue;
+      }
 
       // Debug: log all keys from CSV row
       if (i === 0) {
@@ -289,38 +314,8 @@ async function importCsv(csvBuffer, user) {
       // Parse due date
       const dueDate = parseDate(reference);
 
-      // Check if this is a "Safety Check" which requires both Gas and Alarm tasks
-      if (isSafetyCheck(description)) {
-        // Create SMOKE_ALARM task (no type for unknown status)
-        await prisma.task.create({
-          data: {
-            propertyId: property.id,
-            agencyId: agency.id,
-            taskName: `[${jobNumber}] ${jobType || 'Safety Check'} - Smoke Alarm`,
-            taskDescription: description || null,
-            dueDate: dueDate,
-            status: 'unknown',
-            repeatFrequency: 'none',
-          },
-        });
-
-        // Create GAS_&_ELECTRICITY task (no type for unknown status)
-        await prisma.task.create({
-          data: {
-            propertyId: property.id,
-            agencyId: agency.id,
-            taskName: `[${jobNumber}] ${jobType || 'Safety Check'} - Gas & Electricity`,
-            taskDescription: description || null,
-            dueDate: dueDate,
-            status: 'unknown',
-            repeatFrequency: 'none',
-          },
-        });
-
-        results.created += 2;
-        logger.debug(`Created dual tasks for Safety Check: [${jobNumber}]`);
-      } else {
-        // Create single task based on description/job type
+      // Helper function to create a task with specified type
+      const createTask = async (type) => {
         await prisma.task.create({
           data: {
             propertyId: property.id,
@@ -328,14 +323,56 @@ async function importCsv(csvBuffer, user) {
             taskName: `[${jobNumber}] ${jobType || 'Safety Check'}`,
             taskDescription: description || null,
             dueDate: dueDate,
-            type: mapJobType(description),
-            status: 'unknown',
+            inspectionDate: inspectionDate,
+            type: type,
+            status: taskStatus,
             repeatFrequency: 'none',
           },
         });
+        logger.debug(`Created ${type} task for: [${jobNumber}] (status: ${taskStatus})`);
+      };
 
+      // Detect task types from description
+      const { hasGasElec, hasSmokeAlarm, hasSafetyCheck } = detectTaskTypes(description);
+
+      // Determine what tasks to create
+      if (hasGasElec && !hasSmokeAlarm) {
+        // Only gas/electric found → create GAS_&_ELECTRICITY
+        await createTask('GAS_&_ELECTRICITY');
         results.created++;
-        logger.debug(`Created task: [${jobNumber}]`);
+      } else if (!hasGasElec && hasSmokeAlarm) {
+        // Only smoke/alarm found → create SMOKE_ALARM
+        await createTask('SMOKE_ALARM');
+        results.created++;
+      } else if (hasGasElec && hasSmokeAlarm) {
+        // Both found
+        if (isCompleted) {
+          // Complete → create both tasks
+          await createTask('GAS_&_ELECTRICITY');
+          await createTask('SMOKE_ALARM');
+          results.created += 2;
+        } else {
+          // Unknown → create SAFETY_CHECK
+          await createTask('SAFETY_CHECK');
+          results.created++;
+        }
+      } else if (hasSafetyCheck) {
+        // Neither gas/elec nor smoke/alarm, but has "safety check"
+        if (isCompleted) {
+          // Complete → create both tasks
+          await createTask('GAS_&_ELECTRICITY');
+          await createTask('SMOKE_ALARM');
+          results.created += 2;
+        } else {
+          // Unknown → create SAFETY_CHECK
+          await createTask('SAFETY_CHECK');
+          results.created++;
+        }
+      } else {
+        // Nothing found → skip row
+        results.errors.push(`Row ${rowNum}: No valid task type detected in Description (skipped)`);
+        results.skipped++;
+        continue;
       }
 
     } catch (error) {

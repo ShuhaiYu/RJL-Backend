@@ -155,8 +155,73 @@ const taskService = {
       }
     }
 
+    // Handle UNKNOWN status transition with multi-select types
+    // When selected_types is provided, split into multiple tasks
+    if (task.status?.toUpperCase() === 'UNKNOWN' && Array.isArray(data.selected_types) && data.selected_types.length > 0) {
+      const newTasks = [];
+
+      for (const selectedType of data.selected_types) {
+        // Generate task name based on type
+        let taskName = task.taskName;
+        // If original task is SAFETY_CHECK, append type to name
+        if (task.type === 'SAFETY_CHECK') {
+          const typeSuffix = selectedType === 'SMOKE_ALARM' ? 'Smoke Alarm' : 'Gas & Electricity';
+          taskName = `${task.taskName} - ${typeSuffix}`;
+        }
+
+        const newTask = await taskRepository.create({
+          property_id: task.propertyId,
+          agency_id: task.agencyId,
+          task_name: taskName,
+          task_description: task.taskDescription,
+          due_date: task.dueDate,
+          email_id: task.emailId,
+          repeat_frequency: task.repeatFrequency,
+          type: selectedType,
+          status: data.status || 'INCOMPLETE',
+          free_check_available: task.freeCheckAvailable,
+        });
+        newTasks.push(newTask);
+      }
+
+      // Soft delete the original UNKNOWN task
+      await taskRepository.softDelete(id);
+
+      // Handle archive_conflicts if provided
+      if (data.archive_conflicts && newTasks.length > 0) {
+        await this.archiveConflictingTasks(newTasks[0], task.propertyId);
+      }
+
+      // Return the first new task with full relations
+      return taskRepository.findByIdWithRelations(newTasks[0].id);
+    }
+
     await taskRepository.update(id, data);
     return taskRepository.findByIdWithRelations(id);
+  },
+
+  /**
+   * Archive conflicting tasks for the same property with similar type
+   */
+  async archiveConflictingTasks(newTask, propertyId) {
+    const prisma = require('../config/prisma');
+
+    // Find other UNKNOWN tasks for the same property (excluding the new task)
+    const conflictingTasks = await prisma.task.findMany({
+      where: {
+        propertyId: propertyId,
+        isActive: true,
+        status: { equals: 'UNKNOWN', mode: 'insensitive' },
+        id: { not: newTask.id },
+      },
+    });
+
+    // Soft delete conflicting tasks
+    for (const conflictTask of conflictingTasks) {
+      await taskRepository.softDelete(conflictTask.id);
+    }
+
+    return conflictingTasks.length;
   },
 
   /**

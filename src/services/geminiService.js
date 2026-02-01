@@ -138,7 +138,7 @@ Extract and return ONLY a valid JSON object with this exact structure (no markdo
 }
 
 Task Type Rules (IMPORTANT - task_types is an ARRAY):
-- If "safety check", "safety report", or "safety inspection" mentioned → ["SMOKE_ALARM", "GAS_&_ELECTRICITY"]
+- If "safety check", "safety report", or "safety inspection" mentioned → ["SAFETY_CHECK"]
 - If ONLY smoke alarm, fire alarm, or detector mentioned → ["SMOKE_ALARM"]
 - If ONLY gas, electricity, power, or energy safety mentioned → ["GAS_&_ELECTRICITY"]
 - For maintenance, inspection, complaint, inquiry, or other → [] (empty array)
