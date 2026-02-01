@@ -34,10 +34,7 @@ const systemSettingsRepository = {
     const settings = await this.getOrCreate();
 
     const updateData = {};
-    if (data.email_host !== undefined) updateData.emailHost = data.email_host;
     if (data.google_map_key !== undefined) updateData.googleMapKey = data.google_map_key;
-    if (data.email_user !== undefined) updateData.emailUser = data.email_user;
-    if (data.email_password !== undefined) updateData.emailPassword = data.email_password;
 
     return prisma.systemSettings.update({
       where: { id: settings.id },
@@ -51,20 +48,6 @@ const systemSettingsRepository = {
   async getGoogleMapKey() {
     const settings = await this.get();
     return settings?.googleMapKey;
-  },
-
-  /**
-   * Get email settings
-   */
-  async getEmailSettings() {
-    const settings = await this.get();
-    if (!settings) return null;
-
-    return {
-      host: settings.emailHost,
-      user: settings.emailUser,
-      password: settings.emailPassword,
-    };
   },
 };
 

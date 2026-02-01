@@ -116,9 +116,6 @@ router.get('/settings',
       res.json({
         success: true,
         data: {
-          email_user: settings.emailUser,
-          email_password: settings.emailPassword,
-          email_host: settings.emailHost,
           google_map_key: settings.googleMapKey,
         },
       });
@@ -137,9 +134,6 @@ router.put('/settings',
       res.json({
         success: true,
         data: {
-          email_user: settings.emailUser,
-          email_password: settings.emailPassword,
-          email_host: settings.emailHost,
           google_map_key: settings.googleMapKey,
         },
       });

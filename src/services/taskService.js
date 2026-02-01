@@ -288,6 +288,7 @@ const taskService = {
         subject: task.email.subject,
         sender: task.email.sender,
         email_body: task.email.emailBody,
+        process_note: task.email.processNote,
       }];
     }
 
