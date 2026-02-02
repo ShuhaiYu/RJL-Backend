@@ -48,15 +48,24 @@ const emailRepository = {
 
   /**
    * Find all emails with filters and pagination
+   * @param {Object} options - Filter options
+   * @param {number} options.propertyId - Filter by property ID
+   * @param {number} options.agencyId - Filter by agency ID
+   * @param {string} options.direction - Filter by direction ('inbound' | 'outbound')
+   * @param {string} options.search - Search term
+   * @param {number} options.skip - Pagination offset
+   * @param {number} options.take - Pagination limit
    */
-  async findAll({ propertyId, agencyId, search, skip = 0, take = 50 }) {
+  async findAll({ propertyId, agencyId, direction, search, skip = 0, take = 50 }) {
     const where = {
       ...(propertyId && { propertyId }),
       ...(agencyId && { agencyId }),
+      ...(direction && { direction }),
       ...(search && {
         OR: [
           { subject: { contains: search, mode: 'insensitive' } },
           { sender: { contains: search, mode: 'insensitive' } },
+          { recipient: { contains: search, mode: 'insensitive' } },
           { emailBody: { contains: search, mode: 'insensitive' } },
         ],
       }),
@@ -90,7 +99,7 @@ const emailRepository = {
   },
 
   /**
-   * Create a new email
+   * Create a new email (inbound by default)
    */
   async create(data) {
     return prisma.email.create({
@@ -102,6 +111,7 @@ const emailRepository = {
         propertyId: data.property_id,
         agencyId: data.agency_id,
         gmailMsgid: data.gmail_msgid,
+        direction: 'inbound', // Default to inbound for received emails
       },
       include: {
         property: true,
@@ -194,7 +204,36 @@ const emailRepository = {
         html: data.html,
         gmailMsgid: data.gmail_msgid,
         isProcessed: false,
+        direction: 'inbound',
         // propertyId and agencyId are null initially
+      },
+    });
+  },
+
+  /**
+   * Create an outbound email record
+   * For sent emails (reminders, notifications, etc.)
+   * @param {Object} data - Email data
+   * @param {string} data.subject - Email subject
+   * @param {string} data.from - Sender address
+   * @param {string} data.to - Recipient address
+   * @param {string} data.text - Plain text content
+   * @param {string} data.html - HTML content
+   * @param {number} data.property_id - Optional property ID
+   * @param {number} data.agency_id - Optional agency ID
+   */
+  async createOutbound(data) {
+    return prisma.email.create({
+      data: {
+        subject: data.subject,
+        sender: data.from,
+        recipient: data.to,
+        emailBody: data.text,
+        html: data.html,
+        propertyId: data.property_id || null,
+        agencyId: data.agency_id || null,
+        direction: 'outbound',
+        isProcessed: true, // Outbound emails are marked as processed
       },
     });
   },

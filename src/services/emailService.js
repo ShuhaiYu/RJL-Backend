@@ -35,7 +35,7 @@ const emailService = {
   /**
    * List emails with filters
    */
-  async listEmails(requestingUser, { search, page = 1, limit = 50, property_id, agency_id }) {
+  async listEmails(requestingUser, { search, page = 1, limit = 50, property_id, agency_id, direction }) {
     const skip = (page - 1) * limit;
 
     const filters = {
@@ -43,6 +43,7 @@ const emailService = {
       take: limit,
       search,
       propertyId: property_id,
+      direction, // 'inbound' | 'outbound' | undefined (all)
     };
 
     // Apply agency filter based on role
@@ -371,6 +372,7 @@ const emailService = {
       id: email.id,
       subject: email.subject,
       sender: email.sender,
+      recipient: email.recipient,
       email_body: email.emailBody,
       html: email.html,
       property_id: email.propertyId,
@@ -378,6 +380,7 @@ const emailService = {
       gmail_msgid: email.gmailMsgid,
       is_processed: email.isProcessed,
       process_note: email.processNote,
+      direction: email.direction || 'inbound', // Default to 'inbound' for backwards compatibility
       created_at: email.createdAt,
       updated_at: email.updatedAt,
     };

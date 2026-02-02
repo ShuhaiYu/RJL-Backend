@@ -76,6 +76,7 @@ model Email {
   id          Int       @id @default(autoincrement())
   subject     String?
   sender      String?
+  recipient   String?   @map("recipient")  // Recipient email (for outbound emails)
   emailBody   String?   @map("email_body")
   html        String?
   propertyId  Int?      @map("property_id")
@@ -83,6 +84,7 @@ model Email {
   gmailMsgid  String?   @unique @map("gmail_msgid") @db.VarChar(64)
   isProcessed Boolean   @default(false) @map("is_processed")
   processNote String?   @map("process_note")
+  direction   String?   @default("inbound") @map("direction") @db.VarChar(20)  // "inbound" | "outbound"
   createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 

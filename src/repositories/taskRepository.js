@@ -304,8 +304,11 @@ const taskRepository = {
   },
 
   /**
-   * Find tasks due today or 60 days ago for reminders
-   * Logic: tasks with status incomplete and due_date is today or 60 days ago
+   * Find tasks for reminders:
+   * 1. Advance reminder: COMPLETED status + due_date is approximately 60 days from now
+   *    (to remind agency to book inspection)
+   * 2. Expired reminder: EXPIRED status + due_date just expired (yesterday)
+   *    (to remind agency that task has expired)
    */
   async findTasksForReminder() {
     const today = new Date();
@@ -313,29 +316,25 @@ const taskRepository = {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const sixtyDaysAgo = new Date(today);
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-    const sixtyDaysAgoPlusOne = new Date(sixtyDaysAgo);
-    sixtyDaysAgoPlusOne.setDate(sixtyDaysAgoPlusOne.getDate() + 1);
+    // 60 days from now (for advance reminder)
+    const sixtyDaysFromNow = new Date(today);
+    sixtyDaysFromNow.setDate(sixtyDaysFromNow.getDate() + 60);
+    const sixtyDaysFromNowPlusOne = new Date(sixtyDaysFromNow);
+    sixtyDaysFromNowPlusOne.setDate(sixtyDaysFromNowPlusOne.getDate() + 1);
 
-    return prisma.task.findMany({
+    // Yesterday (for expired reminder)
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    // Find COMPLETED tasks with due_date in 60 days (advance reminder)
+    const advanceReminderTasks = await prisma.task.findMany({
       where: {
         isActive: true,
-        status: 'INCOMPLETE',
-        OR: [
-          {
-            dueDate: {
-              gte: today,
-              lt: tomorrow,
-            },
-          },
-          {
-            dueDate: {
-              gte: sixtyDaysAgo,
-              lt: sixtyDaysAgoPlusOne,
-            },
-          },
-        ],
+        status: 'COMPLETED',
+        dueDate: {
+          gte: sixtyDaysFromNow,
+          lt: sixtyDaysFromNowPlusOne,
+        },
       },
       include: {
         property: {
@@ -350,6 +349,36 @@ const taskRepository = {
         },
       },
     });
+
+    // Find EXPIRED tasks with due_date yesterday (expired reminder)
+    const expiredReminderTasks = await prisma.task.findMany({
+      where: {
+        isActive: true,
+        status: 'EXPIRED',
+        dueDate: {
+          gte: yesterday,
+          lt: today,
+        },
+      },
+      include: {
+        property: {
+          include: {
+            user: {
+              include: {
+                agency: true,
+              },
+            },
+            contacts: { where: { isActive: true } },
+          },
+        },
+      },
+    });
+
+    // Return tasks with reminder type tag
+    return {
+      advanceReminder: advanceReminderTasks,
+      expiredReminder: expiredReminderTasks,
+    };
   },
 };
 

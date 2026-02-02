@@ -83,16 +83,22 @@ module.exports = {
   /**
    * List emails
    * GET /api/emails
+   * Query params:
+   *   - direction: 'inbound' | 'outbound' (optional filter)
+   *   - search: search term
+   *   - page, limit: pagination
+   *   - property_id, agency_id: filters
    */
   listEmails: async (req, res, next) => {
     try {
-      const { search, page, limit, property_id, agency_id } = req.query;
+      const { search, page, limit, property_id, agency_id, direction } = req.query;
       const result = await emailService.listEmails(req.user, {
         search,
         page: parseInt(page, 10) || 1,
         limit: parseInt(limit, 10) || 50,
         property_id: property_id ? parseInt(property_id, 10) : undefined,
         agency_id: agency_id ? parseInt(agency_id, 10) : undefined,
+        direction: direction || undefined,
       });
 
       sendSuccess(res, {
