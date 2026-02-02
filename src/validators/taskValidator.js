@@ -47,6 +47,9 @@ const updateTaskSchema = z.object({
   status: z.enum(validStatuses, { errorMap: () => ({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }) }).optional(),
   is_active: z.boolean().optional(),
   free_check_available: z.boolean().optional(),
+  // Fields for splitting UNKNOWN tasks into specific task types
+  selected_types: z.array(z.enum(validTypes, { errorMap: () => ({ message: `Invalid task type. Must be one of: ${validTypes.join(', ')}` }) })).optional(),
+  archive_conflicts: z.boolean().optional(),
 }).refine((data) => Object.keys(data).length > 0, {
   message: 'At least one field must be provided for update',
 });
