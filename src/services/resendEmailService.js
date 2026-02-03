@@ -20,7 +20,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const DEFAULT_FROM = 'RJL System <noreply@rjlagroup.com.au>';
 
 // Reply instruction to add to emails
-const REPLY_INSTRUCTION = '\n\nFor replies, please email ray@rjlagroup.com';
+const REPLY_INSTRUCTION = '\n\nFor replies, please email workorder@rjlgroup.com.au';
 
 const resendEmailService = {
   /**

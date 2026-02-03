@@ -693,7 +693,7 @@ const inspectionNotificationService = {
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email.
+                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
               </p>
             </td>
           </tr>
@@ -788,7 +788,7 @@ const inspectionNotificationService = {
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email.
+                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
               </p>
             </td>
           </tr>
@@ -868,7 +868,7 @@ const inspectionNotificationService = {
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email.
+                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
               </p>
             </td>
           </tr>
@@ -960,7 +960,7 @@ const inspectionNotificationService = {
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email.
+                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
               </p>
             </td>
           </tr>
@@ -1070,7 +1070,7 @@ const inspectionNotificationService = {
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email.
+                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
               </p>
             </td>
           </tr>

@@ -12,8 +12,8 @@ const emailRepository = require('../repositories/emailRepository');
 const logger = require('../lib/logger');
 const { sendSuccess, sendError } = require('../lib/response');
 
-// Allowed domain for inbound emails
-const ALLOWED_DOMAIN = 'rjlagroup.com';
+// Allowed recipient email for inbound emails
+const ALLOWED_RECIPIENT = 'workorder@rjlagroup.com';
 
 /**
  * Fetch full inbound email content from Resend Receiving API
@@ -93,19 +93,18 @@ const webhookController = {
         return sendError(res, { statusCode: 502, message: 'Failed to fetch email content' });
       }
 
-      // Check if recipient domain is allowed
+      // Check if recipient is the allowed email address
       const recipients = Array.isArray(fullEmail.to) ? fullEmail.to : [fullEmail.to].filter(Boolean);
-      const isAllowedDomain = recipients.some(email => {
-        const domain = email.split('@')[1]?.toLowerCase();
-        return domain === ALLOWED_DOMAIN || domain?.endsWith(`.${ALLOWED_DOMAIN}`);
+      const isAllowedRecipient = recipients.some(email => {
+        return email.toLowerCase() === ALLOWED_RECIPIENT;
       });
 
-      if (!isAllowedDomain) {
-        logger.info('[Webhook] Ignoring email for non-allowed domain', {
+      if (!isAllowedRecipient) {
+        logger.info('[Webhook] Ignoring email for non-allowed recipient', {
           to: recipients,
-          allowedDomain: ALLOWED_DOMAIN,
+          allowedRecipient: ALLOWED_RECIPIENT,
         });
-        return sendSuccess(res, { statusCode: 200, message: 'Domain not handled' });
+        return sendSuccess(res, { statusCode: 200, message: 'Recipient not handled' });
       }
 
       // Check for duplicate using messageId
