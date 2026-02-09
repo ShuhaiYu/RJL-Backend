@@ -13,7 +13,7 @@ const logger = require('../lib/logger');
 const { sendSuccess, sendError } = require('../lib/response');
 
 // Allowed recipient email for inbound emails
-const ALLOWED_RECIPIENT = 'workorder@rjlagroup.com';
+const ALLOWED_RECIPIENT = 'workorder@system.rjlagroup.com';
 
 /**
  * Fetch full inbound email content from Resend Receiving API

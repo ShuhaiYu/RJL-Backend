@@ -94,7 +94,7 @@ async function sendReminderEmail(task, reminderType) {
 
   try {
     await resendEmailService.sendEmail({
-      from: 'Task Reminder <noreply@rjlagroup.com.au>',
+      from: 'Task Reminder <noreply@system.rjlagroup.com>',
       to: userEmail,
       subject,
       text: textBody,

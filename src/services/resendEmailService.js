@@ -17,10 +17,10 @@ if (!process.env.RESEND_API_KEY) {
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Default sender address
-const DEFAULT_FROM = 'RJL System <noreply@rjlagroup.com.au>';
+const DEFAULT_FROM = 'RJL System <noreply@system.rjlagroup.com>';
 
 // Reply instruction to add to emails
-const REPLY_INSTRUCTION = '\n\nFor replies, please email workorder@rjlgroup.com.au';
+const REPLY_INSTRUCTION = '\n\nFor human assistance, email workorder@rjlagroup.com\nTo submit a work order (AI-processed), email workorder@system.rjlagroup.com';
 
 const resendEmailService = {
   /**

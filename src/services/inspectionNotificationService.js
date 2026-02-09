@@ -454,7 +454,7 @@ const inspectionNotificationService = {
 
     try {
       await resendEmailService.sendEmail({
-        from: 'Safety Check Inspection <noreply@rjlagroup.com.au>',
+        from: 'Safety Check Inspection <noreply@system.rjlagroup.com>',
         to: contact.email,
         subject: `Safety Check Inspection - ${property.address}`,
         html: this.generateEmailTemplate(contact, property, schedule, scheduleDate, bookingLink, inspectionTypes),
@@ -484,7 +484,7 @@ const inspectionNotificationService = {
 
     try {
       await resendEmailService.sendEmail({
-        from: 'Property Inspection <noreply@rjlagroup.com.au>',
+        from: 'Property Inspection <noreply@system.rjlagroup.com>',
         to: booking.contactEmail,
         subject: `Booking Confirmed - ${booking.property.address}`,
         html: this.generateConfirmationTemplate(booking, scheduleDate),
@@ -528,7 +528,7 @@ const inspectionNotificationService = {
       recipients.map((recipient) => async () => {
         const recipientName = recipient.contact?.name || recipient.user?.name || 'Recipient';
         await resendEmailService.sendEmail({
-          from: 'Property Inspection <noreply@rjlagroup.com.au>',
+          from: 'Property Inspection <noreply@system.rjlagroup.com>',
           to: recipient.recipientEmail,
           subject: `Booking Confirmed - ${booking.property.address}`,
           html: this.generateConfirmationTemplateWithBooker(booking, scheduleDate, recipientName),
@@ -582,7 +582,7 @@ const inspectionNotificationService = {
 
     try {
       await resendEmailService.sendEmail({
-        from: 'Property Inspection <noreply@rjlagroup.com.au>',
+        from: 'Property Inspection <noreply@system.rjlagroup.com>',
         to: booking.contactEmail,
         subject: `Booking Update - ${booking.property.address}`,
         html: this.generateRejectionTemplate(booking, scheduleDate),
@@ -613,7 +613,7 @@ const inspectionNotificationService = {
 
     try {
       await resendEmailService.sendEmail({
-        from: 'Property Inspection <noreply@rjlagroup.com.au>',
+        from: 'Property Inspection <noreply@system.rjlagroup.com>',
         to: booking.contactEmail,
         subject: `Booking Rescheduled - ${booking.property.address}`,
         html: this.generateRescheduleTemplate(booking, scheduleDate, oldSlot),
@@ -692,8 +692,11 @@ const inspectionNotificationService = {
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
+              <p style="margin: 0 0 4px; color: #9ca3af; font-size: 12px;">
+                This is an automated message. Please do not reply directly to this email.
+              </p>
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
+                For human assistance: <a href="mailto:workorder@rjlagroup.com" style="color: #6b7280;">workorder@rjlagroup.com</a> · To submit a work order (AI-processed): <a href="mailto:workorder@system.rjlagroup.com" style="color: #6b7280;">workorder@system.rjlagroup.com</a>
               </p>
             </td>
           </tr>
@@ -787,8 +790,11 @@ const inspectionNotificationService = {
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
+              <p style="margin: 0 0 4px; color: #9ca3af; font-size: 12px;">
+                This is an automated message. Please do not reply directly to this email.
+              </p>
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
+                For human assistance: <a href="mailto:workorder@rjlagroup.com" style="color: #6b7280;">workorder@rjlagroup.com</a> · To submit a work order (AI-processed): <a href="mailto:workorder@system.rjlagroup.com" style="color: #6b7280;">workorder@system.rjlagroup.com</a>
               </p>
             </td>
           </tr>
@@ -867,8 +873,11 @@ const inspectionNotificationService = {
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
+              <p style="margin: 0 0 4px; color: #9ca3af; font-size: 12px;">
+                This is an automated message. Please do not reply directly to this email.
+              </p>
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
+                For human assistance: <a href="mailto:workorder@rjlagroup.com" style="color: #6b7280;">workorder@rjlagroup.com</a> · To submit a work order (AI-processed): <a href="mailto:workorder@system.rjlagroup.com" style="color: #6b7280;">workorder@system.rjlagroup.com</a>
               </p>
             </td>
           </tr>
@@ -959,8 +968,11 @@ const inspectionNotificationService = {
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
+              <p style="margin: 0 0 4px; color: #9ca3af; font-size: 12px;">
+                This is an automated message. Please do not reply directly to this email.
+              </p>
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
+                For human assistance: <a href="mailto:workorder@rjlagroup.com" style="color: #6b7280;">workorder@rjlagroup.com</a> · To submit a work order (AI-processed): <a href="mailto:workorder@system.rjlagroup.com" style="color: #6b7280;">workorder@system.rjlagroup.com</a>
               </p>
             </td>
           </tr>
@@ -1069,8 +1081,11 @@ const inspectionNotificationService = {
           <!-- Footer -->
           <tr>
             <td style="padding: 20px 40px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
+              <p style="margin: 0 0 4px; color: #9ca3af; font-size: 12px;">
+                This is an automated message. Please do not reply directly to this email.
+              </p>
               <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                This is an automated message. Please do not reply directly to this email. For any enquiries, please contact workorder@rjlgroup.com.au
+                For human assistance: <a href="mailto:workorder@rjlagroup.com" style="color: #6b7280;">workorder@rjlagroup.com</a> · To submit a work order (AI-processed): <a href="mailto:workorder@system.rjlagroup.com" style="color: #6b7280;">workorder@system.rjlagroup.com</a>
               </p>
             </td>
           </tr>
