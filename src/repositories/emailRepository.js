@@ -32,7 +32,7 @@ const emailRepository = {
             },
           },
         },
-        tasks: true,
+        tasks: { where: { isActive: true } },
       },
     });
   },
@@ -76,7 +76,7 @@ const emailRepository = {
         where,
         include: {
           property: true,
-          tasks: true,
+          tasks: { where: { isActive: true } },
         },
         skip,
         take,

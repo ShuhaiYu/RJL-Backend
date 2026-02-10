@@ -332,6 +332,7 @@ const inspectionBookingService = {
         id: booking.property.id,
         address: booking.property.address,
       } : null,
+      note: booking.note,
       created_at: booking.createdAt,
     };
   },
