@@ -5,6 +5,7 @@
  */
 
 const prisma = require('../config/prisma');
+const { TASK_STATUS } = require('../config/constants');
 
 const propertyRepository = {
   /**
@@ -190,7 +191,7 @@ const propertyRepository = {
       isActive: true,
       tasks: {
         some: {
-          status: 'incomplete',
+          status: TASK_STATUS.INCOMPLETE,
           isActive: true,
         },
       },
