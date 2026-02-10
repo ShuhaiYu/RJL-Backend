@@ -11,7 +11,7 @@ const validFrequencies = Object.values(REPEAT_FREQUENCY);
 
 // Create task schema
 const createTaskSchema = z.object({
-  property_id: z.number().int().positive('Invalid property ID'),
+  property_id: z.coerce.number().int().positive('Invalid property ID'),
   task_name: z.string().min(1, 'Task name is required').max(255, 'Task name too long'),
   task_description: z.string().optional().nullable(),
   due_date: z.string().datetime().optional().nullable(),
@@ -20,6 +20,7 @@ const createTaskSchema = z.object({
   type: z.enum(validTypes, { errorMap: () => ({ message: `Invalid task type. Must be one of: ${validTypes.join(', ')}` }) }).optional().nullable(),
   status: z.enum(validStatuses, { errorMap: () => ({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }) }).optional().default('unknown'),
   free_check_available: z.boolean().optional().default(false),
+  email_id: z.coerce.number().int().positive().optional().nullable(),
 });
 
 // Create multiple tasks schema
