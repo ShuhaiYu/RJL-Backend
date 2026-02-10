@@ -10,6 +10,7 @@ const { Readable } = require('stream');
 const prisma = require('../config/prisma');
 const logger = require('../lib/logger');
 const { AppError } = require('../lib/errors');
+const { TASK_STATUS } = require('../config/constants');
 
 /**
  * Detect task types from description
@@ -284,7 +285,7 @@ async function importCsv(csvBuffer, user) {
       // Parse dates
       const inspectionDate = parseSchedule(schedule);
       const isCompleted = status?.toLowerCase() === 'complete';
-      const taskStatus = isCompleted ? 'COMPLETED' : 'unknown';
+      const taskStatus = isCompleted ? TASK_STATUS.COMPLETED : TASK_STATUS.UNKNOWN;
       const dueDate = parseDate(reference);
 
       // Validation

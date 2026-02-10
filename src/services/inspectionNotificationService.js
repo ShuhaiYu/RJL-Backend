@@ -13,6 +13,7 @@ const userRepository = require('../repositories/userRepository');
 const resendEmailService = require('./resendEmailService');
 const { generateBookingToken, getTokenExpiryDate } = require('../lib/tokenGenerator');
 const { NotFoundError, ValidationError } = require('../lib/errors');
+const { TASK_STATUS } = require('../config/constants');
 const logger = require('../lib/logger');
 
 /**
@@ -86,7 +87,7 @@ const inspectionNotificationService = {
           where: {
             propertyId,
             isActive: true,
-            status: { in: ['incomplete', 'unknown'] },
+            status: { in: [TASK_STATUS.INCOMPLETE, TASK_STATUS.UNKNOWN] },
           },
           select: { type: true },
         });
@@ -293,7 +294,7 @@ const inspectionNotificationService = {
           where: {
             propertyId,
             isActive: true,
-            status: { in: ['incomplete', 'unknown'] },
+            status: { in: [TASK_STATUS.INCOMPLETE, TASK_STATUS.UNKNOWN] },
           },
           select: { type: true },
         });

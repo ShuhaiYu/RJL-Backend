@@ -11,7 +11,7 @@ const inspectionSlotRepository = require('../repositories/inspectionSlotReposito
 const inspectionScheduleRepository = require('../repositories/inspectionScheduleRepository');
 const { generateBookingToken, getTokenExpiryDate, isTokenExpired } = require('../lib/tokenGenerator');
 const { NotFoundError, ValidationError, ConflictError } = require('../lib/errors');
-const { REGION_LABELS } = require('../config/constants');
+const { REGION_LABELS, TASK_STATUS } = require('../config/constants');
 
 const publicBookingService = {
   /**
@@ -148,7 +148,7 @@ const publicBookingService = {
     const processingTask = await prisma.task.findFirst({
       where: {
         propertyId: notification.propertyId,
-        status: 'processing',
+        status: TASK_STATUS.PROCESSING,
         isActive: true,
       },
     });

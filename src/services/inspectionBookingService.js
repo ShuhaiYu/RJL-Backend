@@ -9,7 +9,7 @@ const inspectionBookingRepository = require('../repositories/inspectionBookingRe
 const inspectionSlotRepository = require('../repositories/inspectionSlotRepository');
 const inspectionNotificationService = require('./inspectionNotificationService');
 const { NotFoundError, ValidationError, ConflictError, ForbiddenError } = require('../lib/errors');
-const { REGION_LABELS, BOOKING_STATUS } = require('../config/constants');
+const { REGION_LABELS, BOOKING_STATUS, TASK_STATUS } = require('../config/constants');
 const logger = require('../lib/logger');
 
 const inspectionBookingService = {
@@ -159,11 +159,11 @@ const inspectionBookingService = {
       const taskUpdateResult = await tx.task.updateMany({
         where: {
           propertyId: booking.propertyId,
-          status: 'incomplete',
+          status: TASK_STATUS.INCOMPLETE,
           isActive: true,
         },
         data: {
-          status: 'processing',
+          status: TASK_STATUS.PROCESSING,
           inspectionDate: inspectionDateTime,
           updatedAt: new Date(),
         },

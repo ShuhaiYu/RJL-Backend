@@ -5,6 +5,7 @@
  */
 
 const prisma = require('../config/prisma');
+const { TASK_STATUS } = require('../config/constants');
 
 const agencyRepository = {
   /**
@@ -93,12 +94,12 @@ const agencyRepository = {
           a.created_at,
           a.updated_at,
           COUNT(DISTINCT u.id) as total_users,
-          COUNT(DISTINCT CASE WHEN t.status = 'unknown' AND t.is_active = true THEN p.id END) as unknown_count,
-          COUNT(CASE WHEN t.status = 'incomplete' AND t.is_active = true THEN 1 END) as incomplete_count,
-          COUNT(CASE WHEN t.status = 'processing' AND t.is_active = true THEN 1 END) as processing_count,
-          COUNT(CASE WHEN t.status = 'due soon' AND t.is_active = true THEN 1 END) as due_soon_count,
-          COUNT(CASE WHEN t.status = 'expired' AND t.is_active = true THEN 1 END) as expired_count,
-          COUNT(CASE WHEN t.status = 'completed' AND t.is_active = true THEN 1 END) as completed_count
+          COUNT(DISTINCT CASE WHEN t.status = ${TASK_STATUS.UNKNOWN} AND t.is_active = true THEN p.id END) as unknown_count,
+          COUNT(CASE WHEN t.status = ${TASK_STATUS.INCOMPLETE} AND t.is_active = true THEN 1 END) as incomplete_count,
+          COUNT(CASE WHEN t.status = ${TASK_STATUS.PROCESSING} AND t.is_active = true THEN 1 END) as processing_count,
+          COUNT(CASE WHEN t.status = ${TASK_STATUS.DUE_SOON} AND t.is_active = true THEN 1 END) as due_soon_count,
+          COUNT(CASE WHEN t.status = ${TASK_STATUS.EXPIRED} AND t.is_active = true THEN 1 END) as expired_count,
+          COUNT(CASE WHEN t.status = ${TASK_STATUS.COMPLETED} AND t.is_active = true THEN 1 END) as completed_count
         FROM "AGENCY" a
         LEFT JOIN "USER" u ON u.agency_id = a.id AND u.is_active = true
         LEFT JOIN "PROPERTY" p ON p.user_id = u.id AND p.is_active = true
@@ -123,12 +124,12 @@ const agencyRepository = {
         a.created_at,
         a.updated_at,
         COUNT(DISTINCT u.id) as total_users,
-        COUNT(DISTINCT CASE WHEN t.status = 'unknown' AND t.is_active = true THEN p.id END) as unknown_count,
-        COUNT(CASE WHEN t.status = 'incomplete' AND t.is_active = true THEN 1 END) as incomplete_count,
-        COUNT(CASE WHEN t.status = 'processing' AND t.is_active = true THEN 1 END) as processing_count,
-        COUNT(CASE WHEN t.status = 'due soon' AND t.is_active = true THEN 1 END) as due_soon_count,
-        COUNT(CASE WHEN t.status = 'expired' AND t.is_active = true THEN 1 END) as expired_count,
-        COUNT(CASE WHEN t.status = 'completed' AND t.is_active = true THEN 1 END) as completed_count
+        COUNT(DISTINCT CASE WHEN t.status = ${TASK_STATUS.UNKNOWN} AND t.is_active = true THEN p.id END) as unknown_count,
+        COUNT(CASE WHEN t.status = ${TASK_STATUS.INCOMPLETE} AND t.is_active = true THEN 1 END) as incomplete_count,
+        COUNT(CASE WHEN t.status = ${TASK_STATUS.PROCESSING} AND t.is_active = true THEN 1 END) as processing_count,
+        COUNT(CASE WHEN t.status = ${TASK_STATUS.DUE_SOON} AND t.is_active = true THEN 1 END) as due_soon_count,
+        COUNT(CASE WHEN t.status = ${TASK_STATUS.EXPIRED} AND t.is_active = true THEN 1 END) as expired_count,
+        COUNT(CASE WHEN t.status = ${TASK_STATUS.COMPLETED} AND t.is_active = true THEN 1 END) as completed_count
       FROM "AGENCY" a
       LEFT JOIN "USER" u ON u.agency_id = a.id AND u.is_active = true
       LEFT JOIN "PROPERTY" p ON p.user_id = u.id AND p.is_active = true
