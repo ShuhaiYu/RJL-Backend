@@ -662,26 +662,11 @@ const inspectionService = {
         const contactsWithEmail = contacts?.filter((c) => c.email) || [];
         for (const contact of contactsWithEmail) {
           recipients.push({
+            id: contact.id,
             name: contact.name,
             email: contact.email,
             type: 'contact',
           });
-        }
-
-        // 2. Get ALL agency users
-        const agencyId = property.user?.agency?.id || property.user?.agencyId;
-        if (agencyId) {
-          const agencyUsers = await userRepository.findByAgencyIdWithPriority(agencyId);
-          for (const user of agencyUsers) {
-            if (user.email) {
-              recipients.push({
-                name: user.name,
-                email: user.email,
-                type: 'agencyUser',
-                role: user.role,
-              });
-            }
-          }
         }
 
         return {

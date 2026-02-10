@@ -270,24 +270,6 @@ const inspectionNotificationService = {
           });
         }
 
-        // 2. Get ALL agency users (agencyAdmin + agencyUser)
-        const agencyId = property.user?.agency?.id || property.user?.agencyId;
-        if (agencyId) {
-          const agencyUsers = await userRepository.findByAgencyIdWithPriority(agencyId);
-          for (const user of agencyUsers) {
-            if (user.email) {
-              recipients.push({
-                name: user.name,
-                email: user.email,
-                id: user.id,
-                type: 'agencyUser',
-                contactId: null,
-                userId: user.id,
-                role: user.role,
-              });
-            }
-          }
-        }
 
         // 3. Get property tasks to include inspection types in email
         const propertyTasks = await prisma.task.findMany({
@@ -303,7 +285,7 @@ const inspectionNotificationService = {
         if (recipients.length === 0) {
           results.failed.push({
             property_id: propertyId,
-            error: 'No contact or agency user with email found',
+            error: 'No contact with email found',
           });
           continue;
         }
