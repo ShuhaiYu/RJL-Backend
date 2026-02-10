@@ -441,6 +441,8 @@ const inspectionNotificationService = {
         to: contact.email,
         subject: `Safety Check Inspection - ${property.address}`,
         html: this.generateEmailTemplate(contact, property, schedule, scheduleDate, bookingLink, inspectionTypes),
+        saveToDb: true,
+        property_id: property.id,
       });
       return true;
     } catch (error) {
@@ -471,6 +473,8 @@ const inspectionNotificationService = {
         to: booking.contactEmail,
         subject: `Booking Confirmed - ${booking.property.address}`,
         html: this.generateConfirmationTemplate(booking, scheduleDate),
+        saveToDb: true,
+        property_id: booking.propertyId,
       });
       logger.info('Confirmation email sent', { bookingId: booking.id, email: booking.contactEmail });
       return true;
@@ -515,6 +519,8 @@ const inspectionNotificationService = {
           to: recipient.recipientEmail,
           subject: `Booking Confirmed - ${booking.property.address}`,
           html: this.generateConfirmationTemplateWithBooker(booking, scheduleDate, recipientName),
+          saveToDb: true,
+          property_id: booking.propertyId,
         });
         logger.info('Confirmation email sent to recipient', {
           bookingId: booking.id,
@@ -569,6 +575,8 @@ const inspectionNotificationService = {
         to: booking.contactEmail,
         subject: `Booking Update - ${booking.property.address}`,
         html: this.generateRejectionTemplate(booking, scheduleDate),
+        saveToDb: true,
+        property_id: booking.propertyId,
       });
       logger.info('Rejection email sent', { bookingId: booking.id, email: booking.contactEmail });
       return true;
@@ -600,6 +608,8 @@ const inspectionNotificationService = {
         to: booking.contactEmail,
         subject: `Booking Rescheduled - ${booking.property.address}`,
         html: this.generateRescheduleTemplate(booking, scheduleDate, oldSlot),
+        saveToDb: true,
+        property_id: booking.propertyId,
       });
       logger.info('Reschedule email sent', { bookingId: booking.id, email: booking.contactEmail });
       return true;
