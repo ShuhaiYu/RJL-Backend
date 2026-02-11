@@ -360,6 +360,7 @@ const emailService = {
       'GAS_&_ELECTRICITY': TASK_TYPE.GAS_ELECTRICITY,
       GAS: TASK_TYPE.GAS_ELECTRICITY,
       ELECTRICITY: TASK_TYPE.GAS_ELECTRICITY,
+      SAFETY_CHECK: TASK_TYPE.SAFETY_CHECK,
     };
     return mapping[aiTaskType] || null;
   },
