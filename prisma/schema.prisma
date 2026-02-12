@@ -79,7 +79,6 @@ model Email {
   recipient   String?   @map("recipient")  // Recipient email (for outbound emails)
   emailBody   String?   @map("email_body")
   html        String?
-  propertyId  Int?      @map("property_id")
   agencyId    Int?      @map("agency_id")
   gmailMsgid  String?   @unique @map("gmail_msgid") @db.VarChar(64)
   isProcessed Boolean   @default(false) @map("is_processed")
@@ -89,8 +88,8 @@ model Email {
   updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  property Property? @relation(fields: [propertyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_property_email")
-  tasks    Task[]
+  properties Property[] @relation("EmailProperties")
+  tasks      Task[]
 
   @@map("EMAIL")
 }
@@ -118,7 +117,7 @@ model Property {
   // Relations
   user                    User                     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user")
   contacts                Contact[]
-  emails                  Email[]
+  emails                  Email[]                  @relation("EmailProperties")
   tasks                   Task[]
   veuProjects             VeuProject[]
   inspectionBookings      InspectionBooking[]

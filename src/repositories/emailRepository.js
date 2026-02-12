@@ -23,16 +23,11 @@ const emailRepository = {
     return prisma.email.findUnique({
       where: { id },
       include: {
-        property: {
-          include: {
-            user: {
-              include: {
-                agency: true,
-              },
-            },
-          },
+        properties: true,
+        tasks: {
+          where: { isActive: { not: false } },
+          include: { property: true },
         },
-        tasks: { where: { isActive: { not: false } } },
       },
     });
   },
@@ -58,7 +53,7 @@ const emailRepository = {
    */
   async findAll({ propertyId, agencyId, direction, search, skip = 0, take = 50 }) {
     const where = {
-      ...(propertyId && { propertyId }),
+      ...(propertyId && { properties: { some: { id: propertyId } } }),
       ...(agencyId && { agencyId }),
       ...(direction && { direction }),
       ...(search && {
@@ -75,8 +70,11 @@ const emailRepository = {
       prisma.email.findMany({
         where,
         include: {
-          property: true,
-          tasks: { where: { isActive: { not: false } } },
+          properties: true,
+          tasks: {
+            where: { isActive: { not: false } },
+            include: { property: true },
+          },
         },
         skip,
         take,
@@ -93,7 +91,7 @@ const emailRepository = {
    */
   async findByPropertyId(propertyId) {
     return prisma.email.findMany({
-      where: { propertyId },
+      where: { properties: { some: { id: propertyId } } },
       orderBy: { createdAt: 'desc' },
     });
   },
@@ -108,13 +106,9 @@ const emailRepository = {
         sender: data.sender,
         emailBody: data.email_body,
         html: data.html,
-        propertyId: data.property_id,
         agencyId: data.agency_id,
         gmailMsgid: data.gmail_msgid,
         direction: 'inbound', // Default to inbound for received emails
-      },
-      include: {
-        property: true,
       },
     });
   },
@@ -128,7 +122,6 @@ const emailRepository = {
     if (data.sender !== undefined) updateData.sender = data.sender;
     if (data.email_body !== undefined) updateData.emailBody = data.email_body;
     if (data.html !== undefined) updateData.html = data.html;
-    if (data.property_id !== undefined) updateData.propertyId = data.property_id;
     if (data.agency_id !== undefined) updateData.agencyId = data.agency_id;
 
     return prisma.email.update({
@@ -172,16 +165,18 @@ const emailRepository = {
    * Mark email as processed with optional updates
    * @param {number} id - Email ID
    * @param {Object} options - Optional updates
-   * @param {number} options.propertyId - Property ID to link
+   * @param {number[]} options.propertyIds - Property IDs to connect (M2M)
    * @param {number} options.agencyId - Agency ID to link
    * @param {string} options.processNote - Processing result note
    */
-  async markAsProcessed(id, { propertyId = null, agencyId = null, processNote = null } = {}) {
+  async markAsProcessed(id, { propertyIds = null, agencyId = null, processNote = null } = {}) {
     const updateData = {
       isProcessed: true,
       updatedAt: new Date(),
     };
-    if (propertyId !== null) updateData.propertyId = propertyId;
+    if (propertyIds && propertyIds.length > 0) {
+      updateData.properties = { connect: propertyIds.map((pid) => ({ id: pid })) };
+    }
     if (agencyId !== null) updateData.agencyId = agencyId;
     if (processNote !== null) updateData.processNote = processNote;
 
@@ -230,10 +225,27 @@ const emailRepository = {
         recipient: data.to,
         emailBody: data.text,
         html: data.html,
-        propertyId: data.property_id || null,
         agencyId: data.agency_id || null,
+        ...(data.property_id && {
+          properties: { connect: [{ id: data.property_id }] },
+        }),
         direction: 'outbound',
         isProcessed: true, // Outbound emails are marked as processed
+      },
+    });
+  },
+
+  /**
+   * Connect properties to an email (M2M)
+   * @param {number} emailId - Email ID
+   * @param {number[]} propertyIds - Property IDs to connect
+   */
+  async connectProperties(emailId, propertyIds) {
+    if (!propertyIds || propertyIds.length === 0) return;
+    return prisma.email.update({
+      where: { id: emailId },
+      data: {
+        properties: { connect: propertyIds.map((id) => ({ id })) },
       },
     });
   },

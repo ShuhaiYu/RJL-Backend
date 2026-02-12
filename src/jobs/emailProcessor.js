@@ -47,12 +47,12 @@ async function processUnprocessedEmails(limit = 5) {
       results.push({
         emailId: email.id,
         success: true,
-        propertyId: result.property?.id,
+        propertyIds: result.properties?.map((p) => p.id) || [],
         taskId: result.task?.id,
       });
 
       logger.info(`[EmailProcessor] Email ${email.id} processed successfully`, {
-        propertyId: result.property?.id,
+        propertyIds: result.properties?.map((p) => p.id) || [],
         taskId: result.task?.id,
       });
     } catch (err) {

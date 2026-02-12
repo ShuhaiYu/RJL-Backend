@@ -37,8 +37,7 @@ function getGenAI() {
  */
 function getDefaultResult(subject) {
   return {
-    address: null,
-    contacts: [],
+    properties: [{ address: null, contacts: [] }],
     taskTypes: [],  // 返回空数组，不创建未知类型任务
     urgency: 'MEDIUM',
     summary: subject || 'New email task',
@@ -124,18 +123,29 @@ ${sanitizedBody || '(Empty body)'}
 
 Extract and return ONLY a valid JSON object with this exact structure (no markdown, no code blocks, just pure JSON):
 {
-  "address": "Full Australian address (e.g., 13 Grasso Avenue, Point Cook VIC 3030, Australia) or null",
-  "contacts": [
+  "properties": [
     {
-      "name": "Contact name or null",
-      "phone": "Phone number (Australian format) or null",
-      "email": "Email address or null"
+      "address": "Full Australian address (e.g., 13 Grasso Avenue, Point Cook VIC 3030, Australia) or null",
+      "contacts": [
+        {
+          "name": "Contact name or null",
+          "phone": "Phone number (Australian format) or null",
+          "email": "Email address or null"
+        }
+      ]
     }
   ],
   "task_types": ["SMOKE_ALARM", "GAS_&_ELECTRICITY"],
   "urgency": "One of: LOW, MEDIUM, HIGH, URGENT",
   "summary": "Brief one-line summary of what this email is about"
 }
+
+Multi-Property Rules (IMPORTANT):
+- If the email mentions MULTIPLE properties (each with their own address and possibly their own contacts/tenants), return each as a SEPARATE entry in the "properties" array
+- Each property's "contacts" should only include contacts listed directly under/alongside that property address
+- "task_types" applies to ALL properties (shared at top level)
+- For single-property emails, "properties" will have just one element
+- If no address found at all, return one entry with "address": null
 
 Task Type Rules (IMPORTANT - task_types is an ARRAY):
 - If "safety check", "safety report", or "safety inspection" mentioned → ["SAFETY_CHECK"]
@@ -156,7 +166,7 @@ Other Rules:
    - HIGH: important, priority, soon
    - MEDIUM: standard requests
    - LOW: informational, no rush
-3. If no contacts found, return empty array []
+3. If no contacts found for a property, return empty array [] for that property's contacts
 4. Return ONLY the JSON object, no other text`;
 
       const result = await model.generateContent(prompt);
@@ -188,9 +198,29 @@ Other Rules:
         taskTypes = [extracted.task_type];
       }
 
+      // Normalize properties array (backward-compatible with old flat format)
+      let properties = [];
+      if (Array.isArray(extracted.properties) && extracted.properties.length > 0) {
+        properties = extracted.properties.map((p) => ({
+          address: p.address || null,
+          contacts: Array.isArray(p.contacts) ? p.contacts : [],
+        }));
+      } else if (extracted.address) {
+        // Old format fallback: flat address + contacts
+        properties = [{
+          address: extracted.address,
+          contacts: Array.isArray(extracted.contacts) ? extracted.contacts : [],
+        }];
+      } else {
+        // No address at all
+        properties = [{
+          address: null,
+          contacts: Array.isArray(extracted.contacts) ? extracted.contacts : [],
+        }];
+      }
+
       logger.info('[Gemini] Successfully extracted email info', {
-        hasAddress: !!extracted.address,
-        contactCount: extracted.contacts?.length || 0,
+        propertyCount: properties.length,
         taskTypes: taskTypes,
         urgency: extracted.urgency,
       });
@@ -199,8 +229,7 @@ Other Rules:
       consecutiveFailures = 0;
 
       return {
-        address: extracted.address || null,
-        contacts: Array.isArray(extracted.contacts) ? extracted.contacts : [],
+        properties,
         taskTypes: taskTypes,
         urgency: extracted.urgency || 'MEDIUM',
         summary: extracted.summary || subject || 'New email task',

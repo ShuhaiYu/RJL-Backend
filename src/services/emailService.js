@@ -135,16 +135,6 @@ const emailService = {
     // Use Gemini AI to extract information
     const extractedInfo = await geminiService.extractEmailInfo(subject, textBody);
 
-    // Format address if found
-    let formattedAddress = extractedInfo.address;
-    if (formattedAddress) {
-      try {
-        formattedAddress = await this.formatAddress(formattedAddress);
-      } catch (error) {
-        logger.warn('[Email] Failed to format address', { error: error.message });
-      }
-    }
-
     // Find agency and responsible user based on sender email
     // Priority: 1. System user  2. Agency whitelist  3. System admin (fallback)
     let agency = null;
@@ -239,80 +229,100 @@ const emailService = {
       }
     }
 
-    // Create or find property
-    // If no address extracted, use a placeholder address (propertyId is required)
-    let property = null;
-    if (formattedAddress) {
-      property = await propertyRepository.findByAddressAndUser(formattedAddress, agencyUser.id);
-      if (!property) {
-        property = await propertyRepository.create({
-          address: formattedAddress,
-          user_id: agencyUser.id,
-        });
-      }
-    } else {
-      // No address found - create property with placeholder
-      // Include UUID to ensure uniqueness for similar subjects
-      const placeholderAddress = `[待补充地址] ${uuidv4().slice(0, 8)} - ${subject || 'Email'} - ${new Date().toISOString().slice(0, 10)}`;
-      property = await propertyRepository.create({
-        address: placeholderAddress,
-        user_id: agencyUser.id,
-      });
-      logger.warn('[Email] No address extracted, created placeholder property', {
-        propertyId: property.id,
-        placeholderAddress,
-      });
-    }
-
-    // Create email record (agencyId can be null for unassigned emails)
+    // Create email record first (no property link yet — M2M connected after processing)
     const email = await emailRepository.create({
       subject,
       sender,
       email_body: textBody,
       html,
-      property_id: property.id,
       agency_id: agency?.id || null,
       gmail_msgid: messageId,
     });
 
-    // Create contacts if extracted
-    const createdContacts = [];
-    if (extractedInfo.contacts && extractedInfo.contacts.length > 0) {
-      for (const contact of extractedInfo.contacts) {
-        if (contact.phone || contact.email) {
-          const newContact = await contactRepository.create({
-            name: contact.name || 'Unknown',
-            phone: contact.phone,
-            email: contact.email,
-            property_id: property.id,
+    // Process each property from AI extraction
+    const propertyInfos = extractedInfo.properties || [{ address: null, contacts: [] }];
+    const isMultiProperty = propertyInfos.length > 1;
+    const allProperties = [];
+    const allCreatedContacts = [];
+    const allTasks = [];
+    const taskTypesToCreate = extractedInfo.taskTypes || [];
+
+    for (const propInfo of propertyInfos) {
+      let formattedAddress = propInfo.address;
+      if (formattedAddress) {
+        try {
+          formattedAddress = await this.formatAddress(formattedAddress);
+        } catch (error) {
+          logger.warn('[Email] Failed to format address', { error: error.message });
+        }
+      }
+
+      let property = null;
+      if (formattedAddress) {
+        property = await propertyRepository.findByAddressAndUser(formattedAddress, agencyUser.id);
+        if (!property) {
+          property = await propertyRepository.create({
+            address: formattedAddress,
+            user_id: agencyUser.id,
           });
-          createdContacts.push(newContact);
+        }
+      } else {
+        const placeholderAddress = `[待补充地址] ${uuidv4().slice(0, 8)} - ${subject || 'Email'} - ${new Date().toISOString().slice(0, 10)}`;
+        property = await propertyRepository.create({
+          address: placeholderAddress,
+          user_id: agencyUser.id,
+        });
+      }
+      allProperties.push({ id: property.id, address: property.address });
+
+      // Create contacts for this property
+      if (propInfo.contacts && propInfo.contacts.length > 0) {
+        for (const contact of propInfo.contacts) {
+          if (contact.phone || contact.email) {
+            const newContact = await contactRepository.create({
+              name: contact.name || 'Unknown',
+              phone: contact.phone,
+              email: contact.email,
+              property_id: property.id,
+            });
+            allCreatedContacts.push(newContact);
+          }
+        }
+      }
+
+      // Create tasks for this property
+      if (agency?.id && taskTypesToCreate.length > 0) {
+        for (const taskType of taskTypesToCreate) {
+          const mappedType = this.mapTaskType(taskType);
+          if (mappedType) {
+            const shortAddress = property.address?.split(',')[0] || '';
+            const taskName = isMultiProperty
+              ? `${shortAddress} - ${taskType}`
+              : `${extractedInfo.summary || subject || 'New task from email'} - ${taskType}`;
+            const task = await taskRepository.create({
+              property_id: property.id,
+              agency_id: agency.id,
+              task_name: taskName,
+              task_description: textBody?.substring(0, 500),
+              email_id: email.id,
+              status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
+              type: mappedType,
+            });
+            allTasks.push({ id: task.id, task_name: task.taskName, type: mappedType, propertyId: property.id });
+          }
         }
       }
     }
 
-    // Create tasks from email (可能多个，如 safety check = SMOKE_ALARM + GAS_&_ELECTRICITY)
-    const tasks = [];
-    const taskTypesToCreate = extractedInfo.taskTypes || [];
+    // Connect all properties to the email via M2M
+    const allPropertyIds = allProperties.map((p) => p.id);
+    await emailRepository.connectProperties(email.id, allPropertyIds);
 
-    if (agency?.id && taskTypesToCreate.length > 0) {
-      for (const taskType of taskTypesToCreate) {
-        const mappedType = this.mapTaskType(taskType);
-        if (mappedType) {
-          const task = await taskRepository.create({
-            property_id: property.id,
-            agency_id: agency.id,
-            task_name: `${extractedInfo.summary || subject || 'New task from email'} - ${taskType}`,
-            task_description: textBody?.substring(0, 500),
-            email_id: email.id,
-            status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
-            type: mappedType,
-          });
-          tasks.push({ id: task.id, task_name: task.taskName, type: mappedType });
-        }
-      }
-    } else if (!agency?.id) {
-      logger.warn('[Email] No agency available, task not created. Email saved for manual review.', {
+    // Re-fetch email with M2M relations for accurate formatEmail output
+    const emailWithRelations = await emailRepository.findByIdWithRelations(email.id);
+
+    if (!agency?.id) {
+      logger.warn('[Email] No agency available, tasks not created. Email saved for manual review.', {
         emailId: email.id,
         senderType,
       });
@@ -324,30 +334,27 @@ const emailService = {
 
     logger.info('[Email] Successfully processed email with AI', {
       emailId: email.id,
-      propertyId: property.id,
-      taskCount: tasks.length,
+      propertyCount: allProperties.length,
+      taskCount: allTasks.length,
       taskTypes: taskTypesToCreate,
       urgency: extractedInfo.urgency,
-      addressExtracted: !!extractedInfo.address,
       senderType,
     });
 
     return {
-      email: this.formatEmail(email),
-      property: {
-        id: property.id,
-        address: property.address,
-      },
-      contacts: createdContacts.length,
-      tasks: tasks,  // 返回任务数组
-      task: tasks.length > 0 ? tasks[0] : null,  // 兼容旧代码，返回第一个任务
+      email: this.formatEmail(emailWithRelations),
+      property: allProperties[0],
+      properties: allProperties,
+      contacts: allCreatedContacts.length,
+      tasks: allTasks,
+      task: allTasks.length > 0 ? allTasks[0] : null,
       extracted: {
         urgency: extractedInfo.urgency,
         summary: extractedInfo.summary,
-        addressFound: !!extractedInfo.address,
+        addressFound: allProperties.some((p) => !p.address?.startsWith('[待补充地址]')),
         taskTypes: taskTypesToCreate,
       },
-      senderType, // 'user', 'whitelist', 'unassigned', or 'api'
+      senderType,
     };
   },
 
@@ -376,22 +383,21 @@ const emailService = {
       recipient: email.recipient,
       email_body: email.emailBody,
       html: email.html,
-      property_id: email.propertyId,
       agency_id: email.agencyId,
       gmail_msgid: email.gmailMsgid,
       is_processed: email.isProcessed,
       process_note: email.processNote,
-      direction: email.direction || 'inbound', // Default to 'inbound' for backwards compatibility
+      direction: email.direction || 'inbound',
       created_at: email.createdAt,
       updated_at: email.updatedAt,
     };
 
-    if (email.property) {
-      formatted.property = {
-        id: email.property.id,
-        address: email.property.address,
-      };
-      formatted.property_address = email.property.address;
+    // M2M properties from _EmailToProperty join table
+    if (email.properties && email.properties.length > 0) {
+      formatted.property_id = email.properties[0].id;           // backward compat
+      formatted.property_address = email.properties[0].address;  // backward compat
+      formatted.property = { id: email.properties[0].id, address: email.properties[0].address };
+      formatted.properties = email.properties.map((p) => ({ id: p.id, address: p.address }));
     }
 
     if (email.tasks && email.tasks.length > 0) {
@@ -400,11 +406,28 @@ const emailService = {
         task_name: t.taskName,
         status: t.status,
         type: t.type,
+        property_id: t.propertyId,
+        property_address: t.property?.address || null,
       }));
       // For display convenience
       formatted.task_id = email.tasks[0].id;
       formatted.task_name = email.tasks[0].taskName;
       formatted.task_type = email.tasks[0].type;
+
+      // If properties not yet populated from M2M include, derive from tasks
+      if (!formatted.properties) {
+        const propertyMap = new Map();
+        for (const t of email.tasks) {
+          if (t.propertyId && !propertyMap.has(t.propertyId)) {
+            propertyMap.set(t.propertyId, { id: t.propertyId, address: t.property?.address || null });
+          }
+        }
+        if (propertyMap.size > 0) {
+          formatted.properties = Array.from(propertyMap.values());
+          formatted.property_id = formatted.properties[0].id;
+          formatted.property_address = formatted.properties[0].address;
+        }
+      }
     }
 
     return formatted;
@@ -428,14 +451,27 @@ const emailService = {
       notes.push(`✓ Manual processing via API`);
     }
 
-    // Property identification
-    if (result.propertyExisted) {
-      notes.push(`✓ Linked to existing property: ${result.property?.address} (ID: ${result.property?.id})`);
-    } else if (result.property) {
-      if (result.property.address?.startsWith('[待补充地址]')) {
+    // Property identification (multi-property aware)
+    const properties = result.properties || (result.property ? [result.property] : []);
+    if (properties.length > 1) {
+      notes.push(`📦 Composite email: ${properties.length} properties detected`);
+      for (const prop of properties) {
+        if (prop.existed) {
+          notes.push(`  ✓ Linked to existing property: ${prop.address} (ID: ${prop.id})`);
+        } else if (prop.address?.startsWith('[待补充地址]')) {
+          notes.push(`  ⚠ Created placeholder property (ID: ${prop.id})`);
+        } else {
+          notes.push(`  ✓ Created new property: ${prop.address} (ID: ${prop.id})`);
+        }
+      }
+    } else if (properties.length === 1) {
+      const prop = properties[0];
+      if (prop.existed) {
+        notes.push(`✓ Linked to existing property: ${prop.address} (ID: ${prop.id})`);
+      } else if (prop.address?.startsWith('[待补充地址]')) {
         notes.push(`⚠ Address not extracted: Created placeholder property`);
       } else {
-        notes.push(`✓ Created new property: ${result.property.address}`);
+        notes.push(`✓ Created new property: ${prop.address}`);
       }
     } else {
       notes.push(`⚠ Could not create property`);
@@ -448,7 +484,6 @@ const emailService = {
         notes.push(`✓ Created task: ${task.task_name} (${taskType})`);
       }
     } else if (result.task) {
-      // 兼容旧格式
       const taskType = result.task.type || 'General';
       notes.push(`✓ Created task: ${result.task.task_name} (${taskType})`);
     } else if (result.noAgency) {
@@ -506,17 +541,7 @@ const emailService = {
       extractedInfo = await geminiService.extractEmailInfo(subject, emailBody);
     } catch (err) {
       logger.warn('[EmailService] AI extraction failed, using defaults', { error: err.message });
-      extractedInfo = { address: null, contacts: [], taskTypes: [], summary: subject, urgency: 'MEDIUM' };
-    }
-
-    // Format address if found
-    let formattedAddress = extractedInfo.address;
-    if (formattedAddress) {
-      try {
-        formattedAddress = await this.formatAddress(formattedAddress);
-      } catch (error) {
-        logger.warn('[EmailService] Failed to format address', { error: error.message });
-      }
+      extractedInfo = { properties: [{ address: null, contacts: [] }], taskTypes: [], summary: subject, urgency: 'MEDIUM' };
     }
 
     // Find agency and responsible user based on sender email
@@ -594,73 +619,95 @@ const emailService = {
       }
     }
 
-    // Create or find property
-    let property = null;
-    let propertyExisted = false;
-
-    if (formattedAddress) {
-      property = await propertyRepository.findByAddressAndUser(formattedAddress, agencyUser.id);
-      if (property) {
-        propertyExisted = true;
-      } else {
-        property = await propertyRepository.create({
-          address: formattedAddress,
-          user_id: agencyUser.id,
-        });
-      }
-    } else {
-      // No address found - create property with placeholder
-      const placeholderAddress = `[待补充地址] ${uuidv4().slice(0, 8)} - ${subject || 'Email'} - ${new Date().toISOString().slice(0, 10)}`;
-      property = await propertyRepository.create({
-        address: placeholderAddress,
-        user_id: agencyUser.id,
-      });
-      logger.warn('[EmailService] No address extracted, created placeholder property', {
-        propertyId: property.id,
-        placeholderAddress,
-      });
-    }
-
-    // Create contacts if extracted
-    const createdContacts = [];
-    if (extractedInfo.contacts && extractedInfo.contacts.length > 0) {
-      for (const contact of extractedInfo.contacts) {
-        if (contact.phone || contact.email) {
-          const newContact = await contactRepository.create({
-            name: contact.name || 'Unknown',
-            phone: contact.phone,
-            email: contact.email,
-            property_id: property.id,
-          });
-          createdContacts.push(newContact);
-        }
-      }
-    }
-
-    // Create tasks from email (可能多个，如 safety check = SMOKE_ALARM + GAS_&_ELECTRICITY)
-    const tasks = [];
+    // Process each property from AI extraction
+    const propertyInfos = extractedInfo.properties || [{ address: null, contacts: [] }];
+    const isMultiProperty = propertyInfos.length > 1;
+    const allProperties = [];
+    const allCreatedContacts = [];
+    const allTasks = [];
     const taskTypesToCreate = extractedInfo.taskTypes || [];
     let noAgency = false;
 
-    if (agency?.id && taskTypesToCreate.length > 0) {
-      for (const taskType of taskTypesToCreate) {
-        const mappedType = this.mapTaskType(taskType);
-        if (mappedType) {
-          const task = await taskRepository.create({
-            property_id: property.id,
-            agency_id: agency.id,
-            task_name: `${extractedInfo.summary || subject || 'New task from email'} - ${taskType}`,
-            task_description: emailBody?.substring(0, 500),
-            email_id: id,
-            status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
-            type: mappedType,
-          });
-          tasks.push({ id: task.id, task_name: task.taskName, type: mappedType });
+    for (let i = 0; i < propertyInfos.length; i++) {
+      const propInfo = propertyInfos[i];
+      let formattedAddress = propInfo.address;
+      if (formattedAddress) {
+        try {
+          formattedAddress = await this.formatAddress(formattedAddress);
+        } catch (error) {
+          logger.warn('[EmailService] Failed to format address', { error: error.message });
         }
       }
-    } else if (!agency?.id) {
-      noAgency = true;
-      logger.warn('[EmailService] No agency available, task not created', { emailId: id });
+
+      let property = null;
+      let propertyExisted = false;
+
+      if (formattedAddress) {
+        property = await propertyRepository.findByAddressAndUser(formattedAddress, agencyUser.id);
+        if (property) {
+          propertyExisted = true;
+        } else {
+          property = await propertyRepository.create({
+            address: formattedAddress,
+            user_id: agencyUser.id,
+          });
+        }
+      } else {
+        const placeholderAddress = `[待补充地址] ${uuidv4().slice(0, 8)} - ${subject || 'Email'} - ${new Date().toISOString().slice(0, 10)}`;
+        property = await propertyRepository.create({
+          address: placeholderAddress,
+          user_id: agencyUser.id,
+        });
+        logger.warn('[EmailService] No address extracted, created placeholder property', {
+          propertyId: property.id,
+          placeholderAddress,
+        });
+      }
+      allProperties.push({ id: property.id, address: property.address, existed: propertyExisted });
+
+      // Create contacts for this property
+      if (propInfo.contacts && propInfo.contacts.length > 0) {
+        for (const contact of propInfo.contacts) {
+          if (contact.phone || contact.email) {
+            const newContact = await contactRepository.create({
+              name: contact.name || 'Unknown',
+              phone: contact.phone,
+              email: contact.email,
+              property_id: property.id,
+            });
+            allCreatedContacts.push(newContact);
+          }
+        }
+      }
+
+      // Create tasks for this property
+      if (agency?.id && taskTypesToCreate.length > 0) {
+        for (const taskType of taskTypesToCreate) {
+          const mappedType = this.mapTaskType(taskType);
+          if (mappedType) {
+            const shortAddress = property.address?.split(',')[0] || '';
+            const taskName = isMultiProperty
+              ? `${shortAddress} - ${taskType}`
+              : `${extractedInfo.summary || subject || 'New task from email'} - ${taskType}`;
+            const task = await taskRepository.create({
+              property_id: property.id,
+              agency_id: agency.id,
+              task_name: taskName,
+              task_description: emailBody?.substring(0, 500),
+              email_id: id,
+              status: senderType === 'unassigned' ? 'UNASSIGNED' : 'UNKNOWN',
+              type: mappedType,
+            });
+            allTasks.push({ id: task.id, task_name: task.taskName, type: mappedType, propertyId: property.id });
+          }
+        }
+      } else if (!agency?.id) {
+        noAgency = true;
+      }
+    }
+
+    if (noAgency) {
+      logger.warn('[EmailService] No agency available, tasks not created', { emailId: id });
     } else if (taskTypesToCreate.length === 0) {
       logger.info('[EmailService] No recognized task types, no tasks created.', { emailId: id });
     }
@@ -669,15 +716,15 @@ const emailService = {
     const result = {
       senderType,
       agencyUser,
-      property: { id: property.id, address: property.address },
-      propertyExisted,
-      task: tasks.length > 0 ? tasks[0] : null,  // 兼容旧代码
-      tasks: tasks,  // 新增：所有任务
+      property: allProperties[0],
+      properties: allProperties,
+      task: allTasks.length > 0 ? allTasks[0] : null,
+      tasks: allTasks,
       noAgency,
       extracted: {
         urgency: extractedInfo.urgency,
         summary: extractedInfo.summary,
-        addressFound: !!extractedInfo.address,
+        addressFound: allProperties.some((p) => !p.address?.startsWith('[待补充地址]')),
         taskTypes: taskTypesToCreate,
       },
     };
@@ -685,17 +732,17 @@ const emailService = {
     // Generate process note
     const processNote = this.generateProcessNote(result);
 
-    // Mark email as processed
+    // Mark email as processed and connect all properties via M2M
     await emailRepository.markAsProcessed(id, {
-      propertyId: property.id,
+      propertyIds: allProperties.map((p) => p.id),
       agencyId: agency?.id || null,
       processNote,
     });
 
     logger.info('[EmailService] Successfully processed stored email', {
       emailId: id,
-      propertyId: property.id,
-      taskCount: tasks.length,
+      propertyCount: allProperties.length,
+      taskCount: allTasks.length,
       taskTypes: taskTypesToCreate,
       senderType,
     });
@@ -705,9 +752,11 @@ const emailService = {
 
     return {
       email: this.formatEmail(updatedEmail),
-      property: result.property,
-      contacts: createdContacts.length,
+      property: allProperties[0],
+      properties: allProperties,
+      contacts: allCreatedContacts.length,
       task: result.task,
+      tasks: allTasks,
       extracted: result.extracted,
       senderType,
       processNote,
