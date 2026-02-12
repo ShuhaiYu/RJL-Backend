@@ -88,7 +88,7 @@ model Email {
   updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  properties Property[] @relation("EmailProperties")
+  properties Property[]
   tasks      Task[]
 
   @@map("EMAIL")
@@ -117,7 +117,7 @@ model Property {
   // Relations
   user                    User                     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user")
   contacts                Contact[]
-  emails                  Email[]                  @relation("EmailProperties")
+  emails                  Email[]
   tasks                   Task[]
   veuProjects             VeuProject[]
   inspectionBookings      InspectionBooking[]
