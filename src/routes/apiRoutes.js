@@ -93,7 +93,7 @@ router.get('/dashboard',
 // ==================== SETTINGS ROUTES ====================
 router.get('/google-map-key',
   authMiddleware.authenticateToken,
-  authMiddleware.requirePermission('read', 'setting'),
+  // authMiddleware.requirePermission('read', 'setting'),
   async (req, res, next) => {
     try {
       const key = await systemSettingsRepository.getGoogleMapKey();
