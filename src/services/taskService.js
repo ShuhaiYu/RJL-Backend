@@ -88,8 +88,20 @@ const taskService = {
       throw new ForbiddenError('Cannot create task for this property');
     }
 
-    // Set agency_id from property's user
-    const agencyId = property.user?.agencyId;
+    // Determine agency_id:
+    // 1. If current user has agency, use user's agency_id (cannot be overridden)
+    // 2. If current user has no agency, accept agency_id from frontend
+    let agencyId;
+    if (requestingUser.agency_id) {
+      agencyId = requestingUser.agency_id;
+    } else {
+      agencyId = data.agency_id;
+    }
+    
+    // Validate that agency_id is available
+    if (!agencyId) {
+      throw new Error('Agency ID is required to create a task');
+    }
 
     const task = await taskRepository.create({
       ...data,
