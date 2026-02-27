@@ -210,15 +210,17 @@ const agencyService = {
       throw new ForbiddenError('Cannot modify this agency');
     }
 
+    const normalizedEmail = emailAddress?.trim().toLowerCase();
+
     // Check if already whitelisted
-    const existing = await agencyWhitelistRepository.findByEmailAndAgency(emailAddress, agencyId);
+    const existing = await agencyWhitelistRepository.findByEmailAndAgency(normalizedEmail, agencyId);
     if (existing) {
       throw new ConflictError('Email already in whitelist');
     }
 
     return agencyWhitelistRepository.create({
       agency_id: agencyId,
-      email_address: emailAddress,
+      email_address: normalizedEmail,
     });
   },
 

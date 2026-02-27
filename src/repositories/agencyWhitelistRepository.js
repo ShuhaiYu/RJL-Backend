@@ -6,6 +6,12 @@
 
 const prisma = require('../config/prisma');
 
+function normalizeEmailAddress(emailAddress) {
+  if (!emailAddress || typeof emailAddress !== 'string') return null;
+  const normalized = emailAddress.trim().toLowerCase();
+  return normalized || null;
+}
+
 const agencyWhitelistRepository = {
   /**
    * Find whitelist entry by ID
@@ -33,10 +39,21 @@ const agencyWhitelistRepository = {
    * Find whitelist entry by email and agency
    */
   async findByEmailAndAgency(emailAddress, agencyId) {
+    const normalizedEmail = normalizeEmailAddress(emailAddress);
+    if (!normalizedEmail) return null;
+
     return prisma.agencyWhitelist.findFirst({
       where: {
-        emailAddress,
         agencyId,
+        OR: [
+          { emailAddress: normalizedEmail },
+          {
+            emailAddress: {
+              equals: normalizedEmail,
+              mode: 'insensitive',
+            },
+          },
+        ],
       },
     });
   },
@@ -45,12 +62,35 @@ const agencyWhitelistRepository = {
    * Find agency by whitelisted email
    */
   async findAgencyByEmail(emailAddress) {
-    const entry = await prisma.agencyWhitelist.findFirst({
-      where: { emailAddress },
+    const normalizedEmail = normalizeEmailAddress(emailAddress);
+    if (!normalizedEmail) return null;
+
+    let entry = await prisma.agencyWhitelist.findFirst({
+      where: {
+        OR: [
+          { emailAddress: normalizedEmail },
+          {
+            emailAddress: {
+              equals: normalizedEmail,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      },
       include: {
         agency: true,
       },
     });
+
+    if (!entry) {
+      const entries = await prisma.agencyWhitelist.findMany({
+        include: {
+          agency: true,
+        },
+      });
+      entry = entries.find((item) => normalizeEmailAddress(item.emailAddress) === normalizedEmail) || null;
+    }
+
     return entry?.agency;
   },
 
@@ -58,20 +98,44 @@ const agencyWhitelistRepository = {
    * Check if email is whitelisted for any agency
    */
   async isEmailWhitelisted(emailAddress) {
+    const normalizedEmail = normalizeEmailAddress(emailAddress);
+    if (!normalizedEmail) return false;
+
     const count = await prisma.agencyWhitelist.count({
-      where: { emailAddress },
+      where: {
+        OR: [
+          { emailAddress: normalizedEmail },
+          {
+            emailAddress: {
+              equals: normalizedEmail,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      },
     });
-    return count > 0;
+
+    if (count > 0) return true;
+
+    const entries = await prisma.agencyWhitelist.findMany({
+      select: { emailAddress: true },
+    });
+    return entries.some((entry) => normalizeEmailAddress(entry.emailAddress) === normalizedEmail);
   },
 
   /**
    * Create a new whitelist entry
    */
   async create(data) {
+    const normalizedEmail = normalizeEmailAddress(data.email_address);
+    if (!normalizedEmail) {
+      throw new Error('Invalid whitelist email address');
+    }
+
     return prisma.agencyWhitelist.create({
       data: {
         agencyId: data.agency_id,
-        emailAddress: data.email_address,
+        emailAddress: normalizedEmail,
       },
       include: {
         agency: true,
