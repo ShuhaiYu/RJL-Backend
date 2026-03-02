@@ -89,16 +89,15 @@ const taskService = {
     }
 
     // Determine agency_id:
-    // 1. If current user has agency, use user's agency_id (cannot be overridden)
-    // 2. If current user has no agency, accept agency_id from frontend
+    // 1. Agency user → forced to use their own agency (security)
+    // 2. Admin/superuser → use frontend-selected agency (from AsyncAgencySelect)
     let agencyId;
     if (requestingUser.agency_id) {
       agencyId = requestingUser.agency_id;
     } else {
       agencyId = data.agency_id;
     }
-    
-    // Validate that agency_id is available
+
     if (!agencyId) {
       throw new Error('Agency ID is required to create a task');
     }
@@ -131,11 +130,22 @@ const taskService = {
       }
     }
 
-    // Create tasks for each property
+    // Determine agency_id with same 2-tier logic as createTask
+    let agencyId;
+    if (requestingUser.agency_id) {
+      agencyId = requestingUser.agency_id;
+    } else {
+      agencyId = taskData.agency_id;
+    }
+
+    if (!agencyId) {
+      throw new Error('Agency ID is required to create a task');
+    }
+
     const tasksData = properties.map((property) => ({
       ...taskData,
       property_id: property.id,
-      agency_id: property.user?.agencyId,
+      agency_id: agencyId,
     }));
 
     const result = await taskRepository.createMany(tasksData);
