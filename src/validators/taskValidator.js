@@ -21,7 +21,7 @@ const createTaskSchema = z.object({
   status: z.enum(validStatuses, { errorMap: () => ({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }) }).optional().default('unknown'),
   free_check_available: z.boolean().optional().default(false),
   email_id: z.coerce.number().int().positive().optional().nullable(),
-  agency_id: z.coerce.number().int().positive('Invalid agency ID').optional().nullable(),
+  agency_id: z.coerce.number().int().positive('Invalid agency ID').optional(),
 });
 
 // Create multiple tasks schema
@@ -35,6 +35,7 @@ const createTasksSchema = z.object({
   type: z.enum(validTypes, { errorMap: () => ({ message: `Invalid task type. Must be one of: ${validTypes.join(', ')}` }) }).optional().nullable(),
   status: z.enum(validStatuses, { errorMap: () => ({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }) }).optional().default('unknown'),
   free_check_available: z.boolean().optional().default(false),
+  agency_id: z.coerce.number().int().positive('Invalid agency ID').optional(),
 });
 
 // Update task schema
