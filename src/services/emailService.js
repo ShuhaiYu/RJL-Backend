@@ -132,8 +132,28 @@ const emailService = {
     const senderEmail = this.extractEmailAddress(sender);
     logger.info('[Email] Processing email', { subject, sender, senderEmail });
 
+    // Build body text for AI: prefer plain text, fall back to stripped HTML
+    let bodyForAI = textBody;
+    if ((!bodyForAI || bodyForAI.trim().length < 50) && html) {
+      bodyForAI = html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/?(p|div|tr|li|h[1-6])[^>]*>/gi, '\n')
+        .replace(/<\/?(td|th)[^>]*>/gi, ' | ')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&#\d+;/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      logger.info('[Email] Using stripped HTML as body for AI extraction', { bodyLength: bodyForAI.length });
+    }
+
     // Use Gemini AI to extract information
-    const extractedInfo = await geminiService.extractEmailInfo(subject, textBody);
+    const extractedInfo = await geminiService.extractEmailInfo(subject, bodyForAI);
 
     // Find agency and responsible user based on sender email
     // Priority: 1. System user  2. Agency whitelist  3. System admin (fallback)
@@ -489,7 +509,7 @@ const emailService = {
     } else if (result.noAgency) {
       notes.push(`⚠ Task not created: No agency determined`);
     } else if (result.extracted?.taskTypes?.length === 0) {
-      notes.push(`ℹ No tasks created: Email type not recognized as SMOKE_ALARM or GAS_&_ELECTRICITY`);
+      notes.push(`ℹ No tasks created: Email type not recognized as SAFETY_CHECK, SMOKE_ALARM, or GAS_&_ELECTRICITY`);
     }
 
     // AI extracted info
@@ -570,10 +590,31 @@ const emailService = {
     // Extract actual email address from sender
     const senderEmail = this.extractEmailAddress(sender);
 
+    // Build body text for AI: prefer plain text, fall back to stripped HTML
+    let bodyForAI = emailBody;
+    if ((!bodyForAI || bodyForAI.trim().length < 50) && html) {
+      // Strip HTML tags to extract readable text for Gemini
+      bodyForAI = html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/?(p|div|tr|li|h[1-6])[^>]*>/gi, '\n')
+        .replace(/<\/?(td|th)[^>]*>/gi, ' | ')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&#\d+;/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      logger.info('[EmailService] Using stripped HTML as body for AI extraction', { emailId: id, bodyLength: bodyForAI.length });
+    }
+
     // Use Gemini AI to extract information
     let extractedInfo = {};
     try {
-      extractedInfo = await geminiService.extractEmailInfo(subject, emailBody);
+      extractedInfo = await geminiService.extractEmailInfo(subject, bodyForAI);
     } catch (err) {
       logger.warn('[EmailService] AI extraction failed, using defaults', { error: err.message });
       extractedInfo = { properties: [{ address: null, contacts: [] }], taskTypes: [], summary: subject, urgency: 'MEDIUM' };
