@@ -505,13 +505,13 @@ const emailService = {
    * Step 2 of 2-step processing: Full AI processing
    * @param {number} emailId - Email ID to process
    */
-  async processStoredEmailById(emailId) {
+  async processStoredEmailById(emailId, { force = false } = {}) {
     const email = await emailRepository.findById(emailId);
     if (!email) {
       throw new NotFoundError('Email');
     }
 
-    if (email.isProcessed) {
+    if (email.isProcessed && !force) {
       return {
         alreadyProcessed: true,
         message: 'Email already processed',
@@ -519,7 +519,42 @@ const emailService = {
       };
     }
 
+    // If re-processing, clean up old data first
+    if (email.isProcessed) {
+      await this.cleanupBeforeReprocess(emailId);
+    }
+
     return this.processStoredEmail(email);
+  },
+
+  /**
+   * Clean up old tasks and property links before re-processing an email
+   * @param {number} emailId - Email ID to clean up
+   */
+  async cleanupBeforeReprocess(emailId) {
+    const prisma = require('../config/prisma');
+
+    // 1. Delete task files and inspection bookings for tasks linked to this email
+    const tasks = await prisma.task.findMany({ where: { emailId }, select: { id: true } });
+    const taskIds = tasks.map((t) => t.id);
+
+    if (taskIds.length > 0) {
+      await prisma.taskFile.deleteMany({ where: { taskId: { in: taskIds } } });
+      await prisma.inspectionBooking.deleteMany({ where: { taskId: { in: taskIds } } });
+      await prisma.task.deleteMany({ where: { emailId } });
+    }
+
+    // 2. Disconnect M2M properties and reset processing state
+    await prisma.email.update({
+      where: { id: emailId },
+      data: {
+        properties: { set: [] },
+        isProcessed: false,
+        processNote: null,
+      },
+    });
+
+    logger.info('[EmailService] Cleaned up old data before re-process', { emailId, deletedTasks: taskIds.length });
   },
 
   /**

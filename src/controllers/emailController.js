@@ -42,7 +42,8 @@ module.exports = {
   processStoredEmail: async (req, res, next) => {
     try {
       const emailId = parseInt(req.params.id, 10);
-      const result = await emailService.processStoredEmailById(emailId);
+      const force = req.body.force === true;
+      const result = await emailService.processStoredEmailById(emailId, { force });
 
       if (result.alreadyProcessed) {
         return sendSuccess(res, {
