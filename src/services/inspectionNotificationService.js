@@ -11,6 +11,7 @@ const propertyRepository = require('../repositories/propertyRepository');
 const contactRepository = require('../repositories/contactRepository');
 const userRepository = require('../repositories/userRepository');
 const resendEmailService = require('./resendEmailService');
+const smsService = require('./smsService');
 const { generateBookingToken, getTokenExpiryDate } = require('../lib/tokenGenerator');
 const { NotFoundError, ValidationError } = require('../lib/errors');
 const { TASK_STATUS } = require('../config/constants');
@@ -444,6 +445,16 @@ const inspectionNotificationService = {
         saveToDb: true,
         property_id: property.id,
       });
+
+      // Send SMS notification (non-blocking, won't affect email flow)
+      const phone = contact.phone || contact.contactPhone;
+      if (phone) {
+        await smsService.sendSMS({
+          to: phone,
+          body: `[RJL] Safety Check Inspection for ${property.address} on ${scheduleDate}. Book your time: ${bookingLink}`,
+        });
+      }
+
       return true;
     } catch (error) {
       logger.error('Failed to send email', { error: error.message });
@@ -477,6 +488,15 @@ const inspectionNotificationService = {
         property_id: booking.propertyId,
       });
       logger.info('Confirmation email sent', { bookingId: booking.id, email: booking.contactEmail });
+
+      // Send SMS notification (non-blocking)
+      if (booking.contactPhone) {
+        await smsService.sendSMS({
+          to: booking.contactPhone,
+          body: `[RJL] Booking Confirmed for ${booking.property.address} on ${scheduleDate}, ${booking.slot.startTime}-${booking.slot.endTime}. Please ensure access to the property.`,
+        });
+      }
+
       return true;
     } catch (error) {
       logger.error('Failed to send confirmation email', { error: error.message });
@@ -579,6 +599,15 @@ const inspectionNotificationService = {
         property_id: booking.propertyId,
       });
       logger.info('Rejection email sent', { bookingId: booking.id, email: booking.contactEmail });
+
+      // Send SMS notification (non-blocking)
+      if (booking.contactPhone) {
+        await smsService.sendSMS({
+          to: booking.contactPhone,
+          body: `[RJL] Your inspection booking for ${booking.property.address} could not be confirmed. Please contact your property manager for alternatives.`,
+        });
+      }
+
       return true;
     } catch (error) {
       logger.error('Failed to send rejection email', { error: error.message });
@@ -612,6 +641,15 @@ const inspectionNotificationService = {
         property_id: booking.propertyId,
       });
       logger.info('Reschedule email sent', { bookingId: booking.id, email: booking.contactEmail });
+
+      // Send SMS notification (non-blocking)
+      if (booking.contactPhone) {
+        await smsService.sendSMS({
+          to: booking.contactPhone,
+          body: `[RJL] Your inspection for ${booking.property.address} has been rescheduled to ${scheduleDate}, ${booking.slot.startTime}-${booking.slot.endTime}. Please ensure access to the property.`,
+        });
+      }
+
       return true;
     } catch (error) {
       logger.error('Failed to send reschedule email', { error: error.message });

@@ -21,6 +21,9 @@ const optionalEnvVars = [
   { name: 'JWT_REFRESH_EXPIRES', default: '7d', description: 'Refresh token expiration' },
   { name: 'FRONTEND_URL', default: 'http://localhost:5173', description: 'Frontend URL' },
   { name: 'GEMINI_API_KEY', default: '', description: 'Google Gemini API key for AI email extraction' },
+  { name: 'TWILIO_ACCOUNT_SID', default: '', description: 'Twilio Account SID for SMS notifications' },
+  { name: 'TWILIO_AUTH_TOKEN', default: '', description: 'Twilio Auth Token for SMS notifications' },
+  { name: 'TWILIO_PHONE_NUMBER', default: '', description: 'Twilio sender phone number or Alphanumeric Sender ID' },
 ];
 
 // These variables are optional in development but REQUIRED in production for security
